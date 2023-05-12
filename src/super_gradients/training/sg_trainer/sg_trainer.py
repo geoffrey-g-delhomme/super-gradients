@@ -262,6 +262,7 @@ class Trainer:
     @classmethod
     def _trigger_cfg_modifying_callbacks(cls, cfg):
         pre_launch_cbs = get_param(cfg, "pre_launch_callbacks_list", list())
+        print(pre_launch_cbs)
         pre_launch_cbs = ListFactory(PreLaunchCallbacksFactory()).get(pre_launch_cbs)
         for plcb in pre_launch_cbs:
             cfg = plcb(cfg)

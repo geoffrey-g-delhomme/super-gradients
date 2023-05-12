@@ -1,5 +1,6 @@
 import collections
 import os
+import pickle
 from typing import List, Dict, Union, Any, Optional, Tuple
 from multiprocessing.pool import ThreadPool
 import random
@@ -76,6 +77,7 @@ class DetectionDataset(Dataset):
         max_num_samples: int = None,
         cache: bool = False,
         cache_dir: str = None,
+        cache_annotations: bool = False,
         input_dim: Optional[Tuple[int, int]] = None,
         transforms: List[DetectionTransform] = [],
         all_classes_list: Optional[List[str]] = [],
@@ -94,7 +96,8 @@ class DetectionDataset(Dataset):
                                         differ based on transforms.
         :param max_num_samples:         If not None, set the maximum size of the dataset by only indexing the first n annotations/images.
         :param cache:                   Whether to cache images or not.
-        :param cache_dir:              Path to the directory where cached images will be stored in an optimized format.
+        :param cache_dir:               Path to the directory where cached images will be stored in an optimized format.
+        :param cache_annotations:       Whether to cache annotations or not.
         :param transforms:              List of transforms to apply sequentially on sample.
         :param all_classes_list:        All the class names.
         :param class_inclusion_list:    If not None, define the subset of classes to be included as targets.
@@ -152,10 +155,12 @@ class DetectionDataset(Dataset):
             raise KeyError('"target" is expected to be in the fields to subclass but it was not included')
 
         self._required_annotation_fields = {"target", "img_path", "resized_img_shape"}
-        self.annotations = self._cache_annotations()
 
         self.cache = cache
         self.cache_dir = cache_dir
+        self.cache_annotations = cache_annotations
+        
+        self.annotations = self._cache_annotations()
         self.cached_imgs_padded = self._cache_images() if self.cache else None
 
         self.transforms = transforms
@@ -189,6 +194,16 @@ class DetectionDataset(Dataset):
         """Load all the annotations to memory to avoid opening files back and forth.
         :return: List of annotations
         """
+        if self.cache_annotations:
+            cache_dir = Path(self.cache_dir)
+            if cache_dir is None:
+                raise ValueError("You must specify a cache_dir if you want to cache your images." "If you did not mean to use cache, please set cache=False ")
+            cache_filepath = Path(self.cache_dir) / "annotations.cache"
+            if cache_filepath.exists():
+                logger.info(f"Load annotations from {cache_filepath.as_posix()}")
+                with open(cache_filepath.as_posix(), 'rb') as handle:
+                    return pickle.load(handle)
+        
         n_invalid_bbox = 0
         annotations = []
         for sample_id, img_id in enumerate(tqdm(range(self.n_available_samples), desc="Caching annotations", disable=not self.verbose)):
@@ -219,6 +234,12 @@ class DetectionDataset(Dataset):
 
         if n_invalid_bbox > 0:
             logger.warning(f"Found {n_invalid_bbox} invalid bbox that were ignored. For more information, please set `show_all_warnings=True`.")
+
+        if self.cache_annotations:
+            logger.info(f"Cache annotations to {cache_filepath.as_posix()}")
+            os.makedirs(cache_filepath.parent.as_posix(), exist_ok=True)
+            with open(cache_filepath.as_posix(), 'wb') as handle:
+                pickle.dump(annotations, handle, protocol=pickle.HIGHEST_PROTOCOL)
 
         return annotations
 

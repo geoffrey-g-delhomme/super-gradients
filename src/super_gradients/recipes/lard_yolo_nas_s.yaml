@@ -1,0 +1,88 @@
+# YoloNAS-S Detection training on COCO2017 Dataset:
+# This training recipe is for demonstration purposes only. Pretrained models were trained using a different recipe.
+# So it will not be possible to reproduce the results of the pretrained models using this recipe.
+
+# Instructions:
+#   0. Make sure that the data is stored in dataset_params.dataset_dir or add "dataset_params.data_dir=<PATH-TO-DATASET>" at the end of the command below (feel free to check ReadMe)
+#   1. Move to the project root (where you will find the ReadMe and src folder)
+#   2. Run the command you want:
+#         yolo_nas_s: python src/super_gradients/examples/train_from_recipe_example/train_from_recipe.py --config-name=coco2017_yolo_nas_s
+#
+
+defaults:
+  - training_hyperparams: lard_yolo_nas_train_params
+  - dataset_params: lard_detection_yolo_nas_dataset_params
+  - arch_params: yolo_nas_s_arch_params
+  - checkpoint_params: default_checkpoint_params
+  - _self_
+  - variable_setup
+
+train_dataloader: coco_detection_yolo_format_train
+val_dataloader: coco_detection_yolo_format_val
+
+dataset_params:
+  train_dataloader_params:
+    batch_size: 8
+  val_dataloader_params:
+    batch_size: 8
+
+num_classes: 1
+
+architecture: yolo_nas_s
+arch_params:
+  num_classes: ${num_classes}
+
+load_checkpoint: False
+checkpoint_params:
+  pretrained_weights: coco
+
+result_path: # By defaults saves results in checkpoints directory
+resume: False
+training_hyperparams:
+  resume: ${resume}
+  zero_weight_decay_on_bias_and_bn: True
+
+  lr_warmup_epochs: 3
+  warmup_mode: linear_epoch_step
+
+  initial_lr: 5e-4
+  cosine_final_lr_ratio: 0.1
+
+  optimizer_params:
+    weight_decay: 0.0001
+
+  ema: True
+  ema_params:
+    decay: 0.9
+
+  max_epochs: 100
+  mixed_precision: True
+  criterion_params:
+    num_classes: ${num_classes}
+
+  phase_callbacks: []
+  loss:
+    ppyoloe_loss:
+      num_classes: ${num_classes}
+      reg_max: 16
+
+  valid_metrics_list:
+    - DetectionMetrics_050:
+        score_thres: 0.1
+        top_k_predictions: 300
+        num_cls: ${num_classes}
+        normalize_targets: True
+        post_prediction_callback:
+          _target_: super_gradients.training.models.detection_models.pp_yolo_e.PPYoloEPostPredictionCallback
+          score_threshold: 0.01
+          nms_top_k: 1000
+          max_predictions: 300
+          nms_threshold: 0.7
+
+  metric_to_watch: "mAP@0.50"
+
+multi_gpu: DDP
+num_gpus: 8
+
+experiment_suffix: ""
+experiment_name: ${architecture}_lard_${experiment_suffix}

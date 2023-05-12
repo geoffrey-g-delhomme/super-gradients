@@ -10,7 +10,7 @@ from torch import nn
 
 from super_gradients.common.abstractions.abstract_logger import get_logger
 from super_gradients.common.environment.device_utils import device_config
-from super_gradients.training import utils as core_utils, models, dataloaders
+from super_gradients.training import utils as core_utils, models, dataloaders, pre_launch_callbacks
 from super_gradients.training.sg_trainer import Trainer
 from super_gradients.training.utils import get_param
 from super_gradients.training.utils.distributed_training_utils import setup_device
