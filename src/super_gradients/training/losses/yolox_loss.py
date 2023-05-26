@@ -114,7 +114,7 @@ class YoloXDetectionLoss(_Loss):
     :param iou_type:                Iou loss type, one of ["iou","giou"] (deafult="iou").
     """
 
-    def __init__(self, strides: list, num_classes: int, use_l1: bool = False, center_sampling_radius: float = 2.5, iou_type: str = "iou"):
+    def __init__(self, strides: list, num_classes: int, use_l1: bool = False, center_sampling_radius: float = 2.5, iou_type: str = "iou", reg_weight: float = 0.5):
         super().__init__()
         self.grids = [torch.zeros(1)] * len(strides)
         self.strides = strides
@@ -122,6 +122,7 @@ class YoloXDetectionLoss(_Loss):
 
         self.center_sampling_radius = center_sampling_radius
         self.use_l1 = use_l1
+        self.reg_weight = reg_weight
         self.l1_loss = nn.L1Loss(reduction="none")
         self.bcewithlog_loss = nn.BCEWithLogitsLoss(reduction="none")
         self.iou_loss = IOUloss(reduction="none", loss_type=iou_type)
@@ -290,8 +291,8 @@ class YoloXDetectionLoss(_Loss):
         else:
             loss_l1 = 0.0
 
-        reg_weight = 5.0
-        loss = reg_weight * loss_iou + loss_obj + loss_cls + loss_l1
+        # reg_weight = 5.0
+        loss = self.reg_weight * loss_iou + loss_obj + loss_cls + loss_l1
 
         return (
             loss,
