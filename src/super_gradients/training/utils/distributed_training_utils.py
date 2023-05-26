@@ -3,6 +3,7 @@ import os
 import itertools
 from typing import List, Tuple
 from contextlib import contextmanager
+from datetime import timedelta
 
 import torch
 import torch.nn as nn
@@ -337,7 +338,8 @@ def initialize_ddp():
     logger.info("Distributed training starting...")
     if not torch.distributed.is_initialized():
         backend = "gloo" if os.name == "nt" else "nccl"
-        torch.distributed.init_process_group(backend=backend, init_method="env://")
+        timeout_s = timedelta(seconds=int(os.environ.get("NCCL_TIMEOUT_S", 30 * 60)))
+        torch.distributed.init_process_group(backend=backend, init_method="env://", timeout=timeout_s)
     torch.cuda.set_device(device_config.assigned_rank)
 
     if torch.distributed.get_rank() == 0:
