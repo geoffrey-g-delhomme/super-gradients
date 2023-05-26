@@ -1,0 +1,7 @@
+defaults:
+  - lard_yolo_nas_train_params
+
+warmup_mode: "linear_batch_step"
+warmup_initial_lr: 1e-6
+lr_warmup_steps: 1000
+lr_warmup_epochs: 0

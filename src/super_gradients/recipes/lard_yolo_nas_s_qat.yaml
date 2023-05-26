@@ -1,30 +1,3 @@
-# defaults:
-#   - lard_yolo_nas_s
-#   - quantization_params: default_quantization_params
-#   - _self_
-
-# checkpoint_params:
-#   checkpoint_path: ???
-#   strict_load: no_key_matching
-
-# experiment_name: lard_yolo_nas_s_qat
-
-# calib_dataloader: coco_detection_yolo_format_val
-
-# dataset_params:
-#   calib_dataset_params: ${dataset_params.val_dataset_params}
-#   calib_dataloader_params: ${dataset_params.val_dataloader_params}
-
-# pre_launch_callbacks_list:
-#   - QATRecipeModificationCallback:
-#       batch_size_divisor: 2
-#       max_epochs_divisor: 10
-#       lr_decay_factor: 0.01
-#       warmup_epochs_divisor: 10
-#       cosine_final_lr_ratio: 0.01
-#       disable_phase_callbacks: True
-#       disable_augmentations: False
-
 defaults:
   - lard_yolo_nas_s
   - quantization_params: default_quantization_params
@@ -43,3 +16,5 @@ pre_launch_callbacks_list:
       cosine_final_lr_ratio: 0.01
       disable_phase_callbacks: True
       disable_augmentations: False
+
+experiment_suffix: "qat"

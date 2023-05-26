@@ -33,8 +33,8 @@
 
 defaults:
   - training_hyperparams: lard_yolox_train_params
-  - dataset_params: lard_detection_dataset_params
-  - arch_params: yolox_s_arch_params
+  - dataset_params: lard_detection_yolox_dataset_params
+  - arch_params: yolox_nano_arch_params
   - checkpoint_params: default_checkpoint_params
   - _self_
   - variable_setup
@@ -42,21 +42,45 @@ defaults:
 train_dataloader: coco_detection_yolo_format_train
 val_dataloader: coco_detection_yolo_format_val
 
-load_checkpoint: False
-resume: False
-
 dataset_params:
   train_dataloader_params:
-    batch_size: 64
+    batch_size: 16
+  val_dataloader_params:
+    batch_size: 16
 
+num_classes: 1
+
+architecture: yolox_n
+arch_params:
+  num_classes: ${num_classes}
+  criterion_params:
+    num_classes: ${num_classes}
+    # use_l1: True # False
+    # center_sampling_radius: 0.6 # 2.5
+    # iou_type: giou # iou
+    reg_weight: 10 # 5
+
+load_checkpoint: False
+# checkpoint_params:
+#   pretrained_weights: coco
+
+result_path: # By defaults saves results in checkpoints directory
+
+# pre_launch_callbacks_list:
+#   - AutoTrainBatchSizeSelectionCallback:
+#       min_batch_size: 6
+#       size_step: 1
+
+resume: False
 training_hyperparams:
   resume: ${resume}
-  mixed_precision: True
-
-architecture: yolox_s
+  sync_bn: False
+  max_epochs: 100
+  initial_lr:  1.e-4
+  cosine_final_lr_ratio: 0.1
 
 multi_gpu: DDP
 num_gpus: 8
 
-experiment_suffix: res${dataset_params.train_dataset_params.input_dim}
-experiment_name: ${architecture}_coco2017_${experiment_suffix}
+experiment_suffix: "nominal"
+experiment_name: ${architecture}_lard_${experiment_suffix}

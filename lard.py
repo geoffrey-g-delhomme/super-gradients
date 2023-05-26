@@ -1,19 +1,22 @@
 # %%
 NOTEBOOK = False
-DATA_DIRPATH = '/aip/datasets/a3/preprocessed/07-02-23/yolo-formated/origin/detect'
-DATA_DIRPATH = '/aip/datasets/deel/processed/origin/detect'
-CHECKPOINT_DIRPATH = './checkpoints'
+DATA_DIRPATH = "/aip/datasets/a3/preprocessed/07-02-23/yolo-day-20/origin/detect"
+DATA_DIRPATH = "/aip/datasets/deel/processed/origin/detect"
+CHECKPOINT_DIRPATH = "./checkpoints"
 EXPERIMENT = "yolo_nas_s_lard"
 MODEL = "yolo_nas_s"
 INPUT = [2048, 2048]
 BATCH_SIZE = 64
+
+# FIXME: export NCC_TIMEOUT_S=$((4*60*60))
 
 # %%
 # %load_ext autoreload
 # %autoreload 2
 
 import sys
-sys.path.append('./src')
+
+sys.path.append("./src")
 
 # %%
 import copy
@@ -35,84 +38,71 @@ setup_device(multi_gpu=MultiGPUMode.DISTRIBUTED_DATA_PARALLEL, num_gpus=8)
 
 # %%
 # model = models.get("yolo_nas_s", pretrained_weights="coco") # s, m or l
-model = models.get(MODEL, num_classes=1) # s, m or l
+model = models.get(MODEL, num_classes=1)  # s, m or l
 
-print(summary(model=model, 
-        input_size=(1, 3, *INPUT),
-        col_names=["input_size", "output_size", "num_params", "trainable"],
-        col_width=20,
-        row_settings=["var_names"]
-))
+print(
+    summary(
+        model=model, input_size=(1, 3, *INPUT), col_names=["input_size", "output_size", "num_params", "trainable"], col_width=20, row_settings=["var_names"]
+    )
+)
 
 
 trainer = Trainer(experiment_name=EXPERIMENT, ckpt_root_dir=CHECKPOINT_DIRPATH)
 
 # %%
 dataset_params = {
-    'data_dir': DATA_DIRPATH,
-    'train_images_dir':'images/train',
-    'train_labels_dir':'labels/train',
-    'train_cache_dir': DATA_DIRPATH+'/cache/train',
-    'val_images_dir':'images/valid',
-    'val_labels_dir':'labels/valid',
-    'val_cache_dir': DATA_DIRPATH+'/cache/valid',
-    'test_images_dir':'images/valid',
-    'test_labels_dir':'labels/valid',
-    'test_cache_dir': DATA_DIRPATH+'/cache/valid',
-    'classes': ['Runway'],
-    'input_dim': INPUT,
-    'cache_annotations': True
+    "data_dir": DATA_DIRPATH,
+    "train_images_dir": "images/train",
+    "train_labels_dir": "labels/train",
+    "train_cache_dir": DATA_DIRPATH + "/cache/train",
+    "val_images_dir": "images/valid",
+    "val_labels_dir": "labels/valid",
+    "val_cache_dir": DATA_DIRPATH + "/cache/valid",
+    "test_images_dir": "images/valid",
+    "test_labels_dir": "labels/valid",
+    "test_cache_dir": DATA_DIRPATH + "/cache/valid",
+    "classes": ["Runway"],
+    "input_dim": INPUT,
+    "cache_annotations": True,
 }
 
 train_data = coco_detection_yolo_format_train(
     dataset_params={
-        'data_dir': dataset_params['data_dir'],
-        'images_dir': dataset_params['train_images_dir'],
-        'labels_dir': dataset_params['train_labels_dir'],
-        'classes': dataset_params['classes'],
-        'input_dim': dataset_params['input_dim'],
-        'cache_dir': dataset_params['train_cache_dir'],
-        'cache_annotations': dataset_params['cache_annotations']
+        "data_dir": dataset_params["data_dir"],
+        "images_dir": dataset_params["train_images_dir"],
+        "labels_dir": dataset_params["train_labels_dir"],
+        "classes": dataset_params["classes"],
+        "input_dim": dataset_params["input_dim"],
+        "cache_dir": dataset_params["train_cache_dir"],
+        "cache_annotations": dataset_params["cache_annotations"],
     },
-    dataloader_params={
-        'batch_size': BATCH_SIZE,
-        'num_workers':8,
-        'sampler': {"DistributedSampler": {}}
-    }
+    dataloader_params={"batch_size": BATCH_SIZE, "num_workers": 8, "sampler": {"DistributedSampler": {}}},
 )
 
 val_data = coco_detection_yolo_format_val(
     dataset_params={
-        'data_dir': dataset_params['data_dir'],
-        'images_dir': dataset_params['val_images_dir'],
-        'labels_dir': dataset_params['val_labels_dir'],
-        'classes': dataset_params['classes'],
-        'input_dim': dataset_params['input_dim'],
-        'cache_dir': dataset_params['val_cache_dir'],
-        'cache_annotations': dataset_params['cache_annotations']
+        "data_dir": dataset_params["data_dir"],
+        "images_dir": dataset_params["val_images_dir"],
+        "labels_dir": dataset_params["val_labels_dir"],
+        "classes": dataset_params["classes"],
+        "input_dim": dataset_params["input_dim"],
+        "cache_dir": dataset_params["val_cache_dir"],
+        "cache_annotations": dataset_params["cache_annotations"],
     },
-    dataloader_params={
-        'batch_size':16,
-        'num_workers':8,
-        'sampler': {"DistributedSampler": {}}
-    }
+    dataloader_params={"batch_size": 16, "num_workers": 8, "sampler": {"DistributedSampler": {}}},
 )
 
 test_data = coco_detection_yolo_format_val(
     dataset_params={
-        'data_dir': dataset_params['data_dir'],
-        'images_dir': dataset_params['val_images_dir'],
-        'labels_dir': dataset_params['val_labels_dir'],
-        'classes': dataset_params['classes'],
-        'input_dim': dataset_params['input_dim'],
-        'cache_dir': dataset_params['val_cache_dir'],
-        'cache_annotations': dataset_params['cache_annotations']
+        "data_dir": dataset_params["data_dir"],
+        "images_dir": dataset_params["val_images_dir"],
+        "labels_dir": dataset_params["val_labels_dir"],
+        "classes": dataset_params["classes"],
+        "input_dim": dataset_params["input_dim"],
+        "cache_dir": dataset_params["val_cache_dir"],
+        "cache_annotations": dataset_params["cache_annotations"],
     },
-    dataloader_params={
-        'batch_size':16,
-        'num_workers':8,
-        'sampler': {"DistributedSampler": {}}
-    }
+    dataloader_params={"batch_size": 16, "num_workers": 8, "sampler": {"DistributedSampler": {}}},
 )
 
 # %%
@@ -121,7 +111,7 @@ print(train_data.dataset.transforms)
 # %%
 # Plot a batch
 if NOTEBOOK:
-  train_data.dataset.plot()
+    train_data.dataset.plot()
 
 # %%
 from super_gradients.training.losses import PPYoloELoss
@@ -129,7 +119,7 @@ from super_gradients.training.metrics import DetectionMetrics_050
 from super_gradients.training.models.detection_models.pp_yolo_e import PPYoloEPostPredictionCallback
 
 train_params = {
-    'silent_mode': False, # True: do not slow down in notebook
+    "silent_mode": False,  # True: do not slow down in notebook
     "average_best_models": True,
     "warmup_mode": "linear_epoch_step",
     "warmup_initial_lr": 1e-6,
@@ -144,32 +134,20 @@ train_params = {
     "ema_params": {"decay": 0.9, "decay_type": "threshold"},
     "max_epochs": 100,
     "mixed_precision": True,
-    "loss": PPYoloELoss(
-        use_static_assigner=False,
-        num_classes=1,
-        reg_max=16
-    ),
+    "loss": PPYoloELoss(use_static_assigner=False, num_classes=1, reg_max=16),
     "valid_metrics_list": [
         DetectionMetrics_050(
             score_thres=0.1,
             top_k_predictions=300,
             num_cls=1,
             normalize_targets=True,
-            post_prediction_callback=PPYoloEPostPredictionCallback(
-                score_threshold=0.3,
-                nms_top_k=200,
-                max_predictions=20,
-                nms_threshold=0.5
-            )
+            post_prediction_callback=PPYoloEPostPredictionCallback(score_threshold=0.3, nms_top_k=200, max_predictions=20, nms_threshold=0.5),
         )
     ],
-    "metric_to_watch": 'mAP@0.50'
+    "metric_to_watch": "mAP@0.50",
 }
 
-trainer.train(model=model, 
-              training_params=train_params, 
-              train_loader=train_data, 
-              valid_loader=val_data)
+trainer.train(model=model, training_params=train_params, train_loader=train_data, valid_loader=val_data)
 
 # %%
 best_model = models.get(MODEL, num_classes=1, checkpoint_path=f"{CHECKPOINT_DIRPATH}/{EXPERIMENT}/average_model.pth").cuda()
