@@ -196,7 +196,10 @@ class COCOPoseEstimationDataset(AbstractPoseEstimationDataset):
                         continue
                     m += mask
                 elif obj["num_keypoints"] == 0:
-                    rles = pycocotools.mask.frPyObjects(obj["segmentation"], img_info["height"], img_info["width"])
+                    if not isinstance(obj["segmentation"], list):
+                        rles = pycocotools.mask.frPyObjects(obj["segmentation"], img_info["height"], img_info["width"])
+                    else:
+                        rles = pycocotools.mask.frPyObjects(np.array(obj["segmentation"]), img_info["height"], img_info["width"])
                     for rle in rles:
                         mask = pycocotools.mask.decode(rle)
                         if mask.shape != m.shape:

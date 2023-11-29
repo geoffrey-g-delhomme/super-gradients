@@ -1,0 +1,131 @@
+num_joints: 4
+
+# OKs sigma values take from https://github.com/cocodataset/cocoapi/blob/master/PythonAPI/pycocotools/cocoeval.py#L523
+oks_sigmas: [0.5, 0.5, 0.5, 0.5]
+
+flip_indexes: [3, 2, 1, 0]
+
+edge_links:
+  - [0, 1]
+  - [1, 2]
+  - [2, 3]
+  - [3, 0]
+
+edge_colors:
+ - [255, 0, 0]
+ - [255, 0, 0]
+ - [255, 0, 0]
+ - [255, 0, 0]
+
+
+keypoint_colors:
+ - [255, 0, 0]
+ - [0, 255, 0]
+ - [0, 0, 255]
+ - [128, 0, 0]
+
+mosaic_prob: 0.25
+
+train_dataset_params:
+  data_dir: ${dataset_coco_root_dirpath}
+  images_dir: train/images
+  json_file: train/annotations.json
+
+  edge_links: ${dataset_params.edge_links}
+  edge_colors: ${dataset_params.edge_colors}
+  keypoint_colors: ${dataset_params.keypoint_colors}
+
+  include_empty_samples: True
+  crowd_annotations_action: mask_as_normal
+
+  transforms:
+    - KeypointsRandomHorizontalFlip:
+        flip_index: ${dataset_params.flip_indexes}
+        prob: 0.5
+
+    - KeypointsBrightnessContrast:
+        brightness_range: [ 0.8, 1.2 ]
+        contrast_range: [ 0.8, 1.2 ]
+        prob: 0.5
+
+    - KeypointsHSV:
+        hgain: 20
+        sgain: 20
+        vgain: 20
+        prob: 0.5
+
+    - KeypointsRandomAffineTransform:
+        max_rotation: 5
+        min_scale: 0.75
+        max_scale: 1.5
+        max_translate: 0.1
+        image_pad_value: 127
+        mask_pad_value: 1
+        prob: 0.75
+        interpolation_mode: [ 0, 1, 2, 3, 4 ]
+
+    - KeypointsMosaic:
+        prob: ${dataset_params.mosaic_prob}
+
+    - KeypointsLongestMaxSize:
+        max_height: ${image_size}
+        max_width: ${image_size}
+
+    - KeypointsPadIfNeeded:
+        min_height: ${image_size}
+        min_width: ${image_size}
+        image_pad_value: [ 127, 127, 127 ]
+        mask_pad_value: 1
+        padding_mode: center
+
+    - KeypointsImageStandardize:
+        max_value: 255
+
+    # - KeypointsRemoveSmallObjects:
+    #     min_instance_area: 1
+    #     min_visible_keypoints: 1
+
+val_dataset_params:
+  data_dir: ${dataset_coco_root_dirpath}
+  images_dir: valid/images
+  json_file: valid/annotations.json
+
+  edge_links: ${dataset_params.edge_links}
+  edge_colors: ${dataset_params.edge_colors}
+  keypoint_colors: ${dataset_params.keypoint_colors}
+
+  include_empty_samples: True
+  crowd_annotations_action: no_action
+
+  transforms:
+    - KeypointsLongestMaxSize:
+        max_height: ${image_size}
+        max_width: ${image_size}
+
+    - KeypointsPadIfNeeded:
+        min_height: ${image_size}
+        min_width: ${image_size}
+        image_pad_value: 127
+        mask_pad_value: 1
+        padding_mode: bottom_right
+
+    - KeypointsImageStandardize:
+        max_value: 255
+
+
+train_dataloader_params:
+  dataset: COCOPoseEstimationDataset
+  shuffle: True
+  batch_size: 8
+  num_workers: 8
+  drop_last: True
+  pin_memory: True
+  collate_fn: YoloNASPoseCollateFN
+
+val_dataloader_params:
+  dataset: COCOPoseEstimationDataset
+  batch_size: 8
+  num_workers: 8
+  drop_last: False
+  pin_memory: False
+  collate_fn: YoloNASPoseCollateFN
