@@ -196,3 +196,4 @@ slurm
 wandb
 tmp
 checkpoints
+.vscode
