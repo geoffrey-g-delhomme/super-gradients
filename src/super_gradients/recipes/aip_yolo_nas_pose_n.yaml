@@ -23,8 +23,9 @@ architecture: yolo_nas_pose_n
 
 image_size: 1024
 # dataset_version: 2023_Q3
-dataset_version: 2023_Q4
-dataset_coco_root_dirpath: /mnt/data1/user_cache/geoffrey.g.delhomme/data/${dataset_version}/coco-k4-1024x750
+# dataset_version: 2023_Q4
+dataset_version: "2023_12"
+dataset_coco_root_dirpath: /mnt/data1/user_cache/geoffrey.g.delhomme/data/${dataset_version}/coco-1024x750
 
 multi_gpu: DDP
 num_gpus: 8

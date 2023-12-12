@@ -1,10 +1,8 @@
 #!/bin/bash
 
-#SBATCH --job-name=sg
-#SBATCH --partition=volta
+#SBATCH --job-name=yolo-nas-pose
+#SBATCH --partition=v100
 #SBATCH --gpus-per-node=8
-#SBATCH --cpus-per-gpu=8
-#SBATCH --mem-per-gpu=90G
 #SBTACH --ntasks-per-node=1
 #SBATCH --ntasks=1
 #SBATCH --output=./slurm/%j-srun-%n.out
