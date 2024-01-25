@@ -1,0 +1,68 @@
+# YoloNAS-S Detection training on COCO2017 Dataset:
+# This training recipe is for demonstration purposes only. Pretrained models were trained using a different recipe.
+# So it will not be possible to reproduce the results of the pretrained models using this recipe.
+
+# Instructions:
+#   0. Make sure that the data is stored in dataset_params.dataset_dir or add "dataset_params.data_dir=<PATH-TO-DATASET>" at the end of the command below (feel free to check ReadMe)
+#   1. Move to the project root (where you will find the ReadMe and src folder)
+#   2. Run the command you want:
+#         yolo_nas_s: python src/super_gradients/examples/train_from_recipe_example/train_from_recipe.py --config-name=coco2017_yolo_nas_s
+#
+
+defaults:
+  - training_hyperparams: aip_yolo_nas_pose_train_params
+  - dataset_params: aip_pose_estimation_yolo_nas_mosaic_dataset_params
+  - arch_params: yolo_nas_pose_n_arch_params
+  - checkpoint_params: default_checkpoint_params
+  - _self_
+  - variable_setup
+
+architecture: yolo_nas_pose_n
+
+# WARNING: patience set to 2
+
+image_size: 2048
+# dataset_version: 2023_Q3
+# dataset_version: 2023_Q4
+dataset_version: "2023_12"
+dataset_coco_root_dirpath: "/mnt/data1/user_cache/geoffrey.g.delhomme/data/2023_12/nominal-2048/coco-2048x1500"
+
+multi_gpu: DDP
+num_gpus: 8
+batch_size: 12
+num_workers: 4
+
+experiment_suffix: "baseline"
+experiment_name: aip_${architecture}_${image_size}_${dataset_version}_${experiment_suffix}
+
+arch_params:
+  num_classes: ${dataset_params.num_joints}
+
+dataset_params:
+  mosaic_prob: 0.25
+  train_dataloader_params:
+    batch_size: ${batch_size}
+    num_workers: ${num_workers}
+  val_dataloader_params:
+    batch_size: ${batch_size}
+    num_workers: ${num_workers}
+
+training_hyperparams:
+  max_epochs: 40 # 300
+  initial_lr: 1.e-4 # 2e-3
+  cosine_final_lr_ratio: 0.01 # 0.05
+  resume: ${resume}
+  mixed_precision: True
+  sg_logger: "wandb_sg_logger" # Weights&Biases Logger, see class super_gradients.common.sg_loggers.wandb_sg_logger.WandBSGLogger for details
+  sg_logger_params: # Params that will be passed to __init__ of the logger super_gradients.common.sg_loggers.wandb_sg_logger.WandBSGLogger
+    project_name: super-gradients # W&B project name
+    experiment_name: ${experiment_name}
+    launch_tensorboard: False
+    tensorboard_port: 5463
+    save_checkpoints_remote: True
+    save_tensorboard_remote: True
+    save_logs_remote: True
+    entity: "geoffrey-g-delhomme-col" # username or team name where you're sending runs
+    save_code: False
+    save_checkpoint_as_artifact: False
+    # api_server: "<OPTIONAL-WANDB-URL>" # Optional: In case your experiment tracking is not hosted at wandb servers
