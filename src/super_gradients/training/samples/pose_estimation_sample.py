@@ -78,7 +78,7 @@ class PoseEstimationSample:
         outside_bottom = self.joints[:, :, 1] >= image_height
 
         outside_image_mask = outside_left | outside_top | outside_right | outside_bottom
-        self.joints[outside_image_mask, 2] = 0
+        self.joints[outside_image_mask, 2] = 1 # initially 0, but the real value should be 1 to "not visible"
 
         if self.bboxes_xywh is not None:
             # Clamp bboxes to image boundaries

@@ -17,6 +17,7 @@ class Losses:
     DEKR_LOSS = "DEKRLoss"
     RESCORING_LOSS = "RescoringLoss"
     YOLONAS_POSE_LOSS = "YoloNASPoseLoss"
+    YOLONAS_INTERSECT_LOSS = "YoloNASIntersectLoss"
 
 
 class Metrics:
@@ -34,6 +35,7 @@ class Metrics:
     BINARY_DICE = "BinaryDice"
     PIXEL_ACCURACY = "PixelAccuracy"
     POSE_ESTIMATION_METRICS = "PoseEstimationMetrics"
+    INTERSECT_ESTIMATION_METRICS = "IntersectEstimationMetrics"
     DETECTION_METRICS_DISTANCE_BASED = "DetectionMetricsDistanceBased"
     DELTAMETRIC = "DeltaMetric"
     DELTA1 = "Delta1"
@@ -336,6 +338,11 @@ class Models:
     YOLO_NAS_POSE_S = "yolo_nas_pose_s"
     YOLO_NAS_POSE_M = "yolo_nas_pose_m"
     YOLO_NAS_POSE_L = "yolo_nas_pose_l"
+
+    YOLO_NAS_INTERSECT_N = "yolo_nas_intersect_n"
+    YOLO_NAS_INTERSECT_S = "yolo_nas_intersect_s"
+    YOLO_NAS_INTERSECT_M = "yolo_nas_intersect_m"
+    YOLO_NAS_INTERSECT_L = "yolo_nas_intersect_l"
 
 
 class ConcatenatedTensorFormats:

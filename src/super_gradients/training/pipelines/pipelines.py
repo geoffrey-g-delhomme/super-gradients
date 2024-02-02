@@ -8,6 +8,7 @@ from tqdm import tqdm
 
 import numpy as np
 import torch
+from super_gradients.module_interfaces.intersect_estimation_post_prediction_callback import IntersectEstimationPredictions
 
 from super_gradients.training.utils.predict import (
     ImagePoseEstimationPrediction,
@@ -30,6 +31,8 @@ from super_gradients.training.utils.predict import (
     SegmentationPrediction,
     VideoSegmentationPrediction,
 )
+from super_gradients.training.utils.predict.prediction_intersect_estimation_results import ImageIntersectEstimationPrediction, ImagesIntersectEstimationPrediction, VideoIntersectEstimationPrediction
+from super_gradients.training.utils.predict.predictions import IntersectEstimationPrediction
 from super_gradients.training.utils.utils import generate_batch, infer_model_device, resolve_torch_device
 from super_gradients.training.utils.media.video import includes_video_extension, lazy_load_video
 from super_gradients.training.utils.media.image import ImageSource, check_image_typing
@@ -439,6 +442,94 @@ class PoseEstimationPipeline(Pipeline):
         self, images_predictions: Iterable[ImageDetectionPrediction], fps: float, n_images: Optional[int] = None
     ) -> VideoPoseEstimationPrediction:
         return VideoPoseEstimationPrediction(_images_prediction_gen=images_predictions, fps=fps, n_frames=n_images)
+    
+
+class IntersectEstimationPipeline(Pipeline):
+    """Pipeline specifically designed for pose estimation tasks.
+    The pipeline includes loading images, preprocessing, prediction, and postprocessing.
+
+    :param model:                       The object detection model (instance of SgModule) used for making predictions.
+    :param post_prediction_callback:    Callback function to process raw predictions from the model.
+    :param image_processor:             Single image processor or a list of image processors for preprocessing and postprocessing the images.
+    :param device:                      The device on which the model will be run. If None, will run on current model device. Use "cuda" for GPU support.
+    :param fuse_model:                  If True, create a copy of the model, and fuse some of its layers to increase performance. This increases memory usage.
+    """
+
+    def __init__(
+        self,
+        model: SgModule,
+        edge_links: Union[np.ndarray, List[Tuple[int, int]]],
+        edge_colors: Union[np.ndarray, List[Tuple[int, int, int]]],
+        line_colors: Union[np.ndarray, List[Tuple[int, int, int]]],
+        keypoint_colors: Union[np.ndarray, List[Tuple[int, int, int]]],
+        post_prediction_callback,
+        device: Optional[str] = None,
+        image_processor: Union[Processing, List[Processing]] = None,
+        fuse_model: bool = True,
+    ):
+        if isinstance(image_processor, list):
+            image_processor = ComposeProcessing(image_processor)
+
+        super().__init__(
+            model=model,
+            device=device,
+            image_processor=image_processor,
+            class_names=None,
+            fuse_model=fuse_model,
+        )
+        self.post_prediction_callback = post_prediction_callback
+        self.edge_links = np.asarray(edge_links, dtype=int)
+        self.edge_colors = np.asarray(edge_colors, dtype=int)
+        self.line_colors = np.asarray(line_colors, dtype=int)
+        self.keypoint_colors = np.asarray(keypoint_colors, dtype=int)
+
+    def _decode_model_output(self, model_output: Union[List, Tuple, torch.Tensor], model_input: np.ndarray) -> List[IntersectEstimationPrediction]:
+        """Decode the model output, by applying post prediction callback. This includes NMS.
+
+        :param model_output:    Direct output of the model, without any post-processing.
+        :param model_input:     Model input (i.e. images after preprocessing).
+        :return:                Predicted Bboxes.
+        """
+        list_of_predictions = self.post_prediction_callback(model_output)
+        decoded_predictions = []
+        for image_level_predictions, image in zip(list_of_predictions, model_input):
+            decoded_predictions.append(
+                IntersectEstimationPrediction(
+                    poses=image_level_predictions.poses.cpu().numpy() if torch.is_tensor(image_level_predictions.poses) else image_level_predictions.poses,
+                    scores=image_level_predictions.scores.cpu().numpy() if torch.is_tensor(image_level_predictions.scores) else image_level_predictions.scores,
+                    lines=image_level_predictions.lines.cpu().numpy() if torch.is_tensor(image_level_predictions.lines) else image_level_predictions.lines,
+                    bboxes_xyxy=image_level_predictions.bboxes_xyxy.cpu().numpy()
+                    if torch.is_tensor(image_level_predictions.bboxes_xyxy)
+                    else image_level_predictions.bboxes_xyxy,
+                    image_shape=image.shape,
+                    edge_links=self.edge_links,
+                    edge_colors=self.edge_colors,
+                    line_colors=self.line_colors,
+                    keypoint_colors=self.keypoint_colors,
+                )
+            )
+
+        return decoded_predictions
+
+    def _instantiate_image_prediction(self, image: np.ndarray, prediction: IntersectEstimationPrediction) -> ImagePrediction:
+        return ImageIntersectEstimationPrediction(image=image, prediction=prediction, class_names=self.class_names)
+
+    def _combine_image_prediction_to_images(
+        self, images_predictions: Iterable[IntersectEstimationPrediction], n_images: Optional[int] = None
+    ) -> Union[ImagesIntersectEstimationPrediction, ImageIntersectEstimationPrediction]:
+        if n_images is not None and n_images == 1:
+            # Do not show tqdm progress bar if there is only one image
+            images_predictions = next(iter(images_predictions))
+        else:
+            images_predictions = [image_predictions for image_predictions in tqdm(images_predictions, total=n_images, desc="Predicting Images")]
+            images_predictions = ImagesPoseEstimationPrediction(_images_prediction_lst=images_predictions)
+
+        return images_predictions
+
+    def _combine_image_prediction_to_video(
+        self, images_predictions: Iterable[ImageDetectionPrediction], fps: float, n_images: Optional[int] = None
+    ) -> IntersectEstimationPredictions:
+        return VideoIntersectEstimationPrediction(_images_prediction_gen=images_predictions, fps=fps, n_frames=n_images)
 
 
 class ClassificationPipeline(Pipeline):
