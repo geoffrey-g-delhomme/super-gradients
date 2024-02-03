@@ -35,9 +35,9 @@ arch_params:
 
 dataset_params:
   line_colors:
-    - [50, 205, 50]  # lime green
-    - [210,105,30]  # chocolate
-    - [255,127,80]  # coral
+    - [0, 128, 128]
+    - [0, 0, 128]
+    - [128, 0, 128]
   mosaic_prob: 0.25
   train_dataloader_params:
     batch_size: 5

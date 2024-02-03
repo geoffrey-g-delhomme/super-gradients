@@ -6,6 +6,7 @@ import torch
 from omegaconf import ListConfig
 from torch import Tensor
 from torchmetrics import Metric
+from shapely import LineString, Polygon, box
 
 from super_gradients.common.registry.registry import register_callback
 from super_gradients.training.datasets.data_formats.bbox_formats.xywh import xywh_to_xyxy
@@ -235,11 +236,40 @@ class ExtremeBatchIntersectEstimationVisualizationCallback(ExtremeBatchCaseVisua
         )
         images_to_save_preds = np.stack(images_to_save_preds)
 
+        gt_lines = []
+        w, h = inputs.shape[1:3]
+        bounds = (0, 0, w, h)
+        enveloppe = box(*bounds)
+        diag = np.linalg.norm(bounds)
+        for gt in gt_samples:
+            gt_lines_sample = []
+            for kpts in gt.joints:
+                lines = []
+                if isinstance(kpts, Tensor):
+                    kpts = kpts.numpy()
+                for edge, o in zip((kpts[[0, 1]], kpts[[0, 3]], kpts[[3, 2]]), (('trbl', 'bltr'), ('ltrb', 'rblt'), ('trbl', 'bltr'))):
+                    line = [0]*5
+                    if edge[:, -1].prod() > 0: # something visible
+                        diff = edge[1][:2] - edge[0][:2]
+                        diff = diff / np.linalg.norm(diff) * diag
+                        segment_extended = LineString((edge[0][:2] - diff, edge[1][:2] + diff))
+                        intersection = segment_extended.intersection(enveloppe)
+                        kpts_inter = list(zip(*intersection.xy))
+                        if len(kpts_inter) > 0:
+                            line[0] = kpts_inter[0][0]
+                            line[1] = kpts_inter[0][1]
+                            line[2] = kpts_inter[1][0]
+                            line[3] = kpts_inter[1][1]
+                            line[4] = 1 # visible
+                    lines.append(line)
+                gt_lines_sample.append(lines)
+            gt_lines.append(gt_lines_sample)
+                
         images_to_save_gt = self._visualize_batch(
             image_tensor=inputs,
             keypoints=[gt.joints for gt in gt_samples],
             bboxes=[xywh_to_xyxy(gt.bboxes_xywh, image_shape=None) if gt.bboxes_xywh is not None else None for gt in gt_samples],
-            lines=None, # TODO: compute gt lines here!!
+            lines=gt_lines,
             scores=None,
             is_crowd=[gt.is_crowd for gt in gt_samples],
             edge_links=self.edge_links,
