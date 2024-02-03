@@ -24,10 +24,14 @@ class YoloNASIntersectDFLHead(BaseDetectionModule, SupportsReplaceNumClasses):
         in_channels: int,
         bbox_inter_channels: int,
         pose_inter_channels: int,
+        line_inter_channels: int,
         pose_regression_blocks: int,
+        line_regression_blocks: int,
         shared_stem: bool,
         pose_conf_in_class_head: bool,
+        line_conf_in_class_head: bool,
         pose_block_use_repvgg: bool,
+        line_block_use_repvgg: bool,
         width_mult: float,
         first_conv_group_size: int,
         num_classes: int,
@@ -57,6 +61,7 @@ class YoloNASIntersectDFLHead(BaseDetectionModule, SupportsReplaceNumClasses):
 
         bbox_inter_channels = width_multiplier(bbox_inter_channels, width_mult, 8)
         pose_inter_channels = width_multiplier(pose_inter_channels, width_mult, 8)
+        line_inter_channels = width_multiplier(line_inter_channels, width_mult, 8)
 
         if first_conv_group_size == 0:
             groups = 0
@@ -68,15 +73,21 @@ class YoloNASIntersectDFLHead(BaseDetectionModule, SupportsReplaceNumClasses):
         self.num_classes = num_classes
         self.shared_stem = shared_stem
         self.pose_conf_in_class_head = pose_conf_in_class_head
+        self.line_conf_in_class_head = line_conf_in_class_head
 
         if self.shared_stem:
-            max_input = max(bbox_inter_channels, pose_inter_channels)
+            max_input = max(bbox_inter_channels, pose_inter_channels, line_inter_channels)
             self.stem = ConvBNReLU(in_channels, max_input, kernel_size=1, stride=1, padding=0, bias=False)
 
             if max_input != pose_inter_channels:
                 self.pose_stem = nn.Conv2d(max_input, pose_inter_channels, kernel_size=1, stride=1, padding=0, bias=False)
             else:
                 self.pose_stem = nn.Identity()
+
+            if max_input != line_inter_channels:
+                self.line_stem = nn.Conv2d(max_input, line_inter_channels, kernel_size=1, stride=1, padding=0, bias=False)
+            else:
+                self.line_stem = nn.Identity()
 
             if max_input != bbox_inter_channels:
                 self.bbox_stem = nn.Conv2d(max_input, bbox_inter_channels, kernel_size=1, stride=1, padding=0, bias=False)
@@ -86,6 +97,7 @@ class YoloNASIntersectDFLHead(BaseDetectionModule, SupportsReplaceNumClasses):
         else:
             self.stem = nn.Identity()
             self.pose_stem = ConvBNReLU(in_channels, pose_inter_channels, kernel_size=1, stride=1, padding=0, bias=False)
+            self.line_stem = ConvBNReLU(in_channels, line_inter_channels, kernel_size=1, stride=1, padding=0, bias=False)
             self.bbox_stem = ConvBNReLU(in_channels, bbox_inter_channels, kernel_size=1, stride=1, padding=0, bias=False)
 
         first_cls_conv = [ConvBNReLU(bbox_inter_channels, bbox_inter_channels, kernel_size=3, stride=1, padding=1, groups=groups, bias=False)] if groups else []
@@ -102,19 +114,27 @@ class YoloNASIntersectDFLHead(BaseDetectionModule, SupportsReplaceNumClasses):
         pose_convs = [pose_block(pose_inter_channels, pose_inter_channels) for _ in range(pose_regression_blocks)]
         self.pose_convs = nn.Sequential(*pose_convs)
 
-        line_convs = [pose_block(pose_inter_channels, pose_inter_channels) for _ in range(pose_regression_blocks)]
+        if line_block_use_repvgg:
+            line_block = partial(QARepVGGBlock, use_alpha=True)
+        else:
+            line_block = partial(ConvBNReLU, kernel_size=3, stride=1, padding=1, bias=False)
+
+        line_convs = [line_block(line_inter_channels, line_inter_channels) for _ in range(line_regression_blocks)]
         self.line_convs = nn.Sequential(*line_convs)
 
         self.reg_pred = nn.Conv2d(bbox_inter_channels, 4 * (reg_max + 1), 1, 1, 0)
 
+        self.cls_pred = nn.Conv2d(bbox_inter_channels, 1 + (self.num_classes if self.pose_conf_in_class_head else 0) + (self.num_lines if self.line_conf_in_class_head else 0), 1, 1, 0)
+
         if self.pose_conf_in_class_head: # true
-            self.cls_pred = nn.Conv2d(bbox_inter_channels, 1 + self.num_classes + self.num_lines, 1, 1, 0)
             self.pose_pred = nn.Conv2d(pose_inter_channels, 2 * self.num_classes, 1, 1, 0)  # each keypoint is x,y
-            self.line_pred = nn.Conv2d(pose_inter_channels, 2 * self.num_lines, 1, 1, 0)  # each line is zfrom,zto
         else:
-            self.cls_pred = nn.Conv2d(bbox_inter_channels, 1, 1, 1, 0)
             self.pose_pred = nn.Conv2d(pose_inter_channels, 3 * self.num_classes, 1, 1, 0)  # each keypoint is x,y,confidence
-            self.line_pred = nn.Conv2d(pose_inter_channels, 3 * self.num_lines, 1, 1, 0)  # each line is zfrom,zto,confidence
+
+        if self.line_conf_in_class_head:
+            self.line_pred = nn.Conv2d(line_inter_channels, 2 * self.num_lines, 1, 1, 0)  # each line is zfrom,zto
+        else:
+            self.line_pred = nn.Conv2d(line_inter_channels, 3 * self.num_lines, 1, 1, 0)  # each line is zfrom,zto,confidence
 
         self.cls_dropout_rate = nn.Dropout2d(cls_dropout_rate) if cls_dropout_rate > 0 else nn.Identity()
         self.reg_dropout_rate = nn.Dropout2d(reg_dropout_rate) if reg_dropout_rate > 0 else nn.Identity()
@@ -150,6 +170,7 @@ class YoloNASIntersectDFLHead(BaseDetectionModule, SupportsReplaceNumClasses):
         """
         x = self.stem(x)
         pose_features = self.pose_stem(x)
+        line_features = self.line_stem(x)
         bbox_features = self.bbox_stem(x)
 
         cls_feat = self.cls_convs(bbox_features)
@@ -164,23 +185,27 @@ class YoloNASIntersectDFLHead(BaseDetectionModule, SupportsReplaceNumClasses):
         pose_feat = self.reg_dropout_rate(pose_feat)
         pose_output = self.pose_pred(pose_feat)
 
-        line_feat = self.line_convs(pose_features)
+        line_feat = self.line_convs(line_features)
         line_feat = self.reg_dropout_rate(line_feat)
         line_output = self.line_pred(line_feat)
 
         if self.pose_conf_in_class_head: # true
             pose_logits = cls_output[:, 1:(self.num_classes+1), :, :]
             pose_regression = pose_output.reshape((pose_output.size(0), self.num_classes, 2, pose_output.size(2), pose_output.size(3)))
-            line_logits = cls_output[:, -self.num_lines:, :, :]
-            line_regression = line_output.reshape((line_output.size(0), self.num_lines, 2, line_output.size(2), line_output.size(3)))
-            cls_output = cls_output[:, 0:1, :, :]
         else:
             pose_output = pose_output.reshape((pose_output.size(0), self.num_classes, 3, pose_output.size(2), pose_output.size(3)))
             pose_logits = pose_output[:, :, 2, :, :]
             pose_regression = pose_output[:, :, 0:2, :, :]
+
+        if self.line_conf_in_class_head:
+            line_logits = cls_output[:, -self.num_lines:, :, :]
+            line_regression = line_output.reshape((line_output.size(0), self.num_lines, 2, line_output.size(2), line_output.size(3)))
+        else:
             line_output = line_output.reshape((line_output.size(0), self.num_lines, 3, line_output.size(2), line_output.size(3)))
             line_logits = line_output[:, :, 2, :, :]
             line_regression = line_output[:, :, 0:2, :, :]
+
+        cls_output = cls_output[:, 0:1, :, :]
 
         return reg_output, cls_output, pose_regression, pose_logits, line_regression, line_logits
 

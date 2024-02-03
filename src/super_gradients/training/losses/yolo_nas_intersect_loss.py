@@ -441,12 +441,12 @@ class YoloNASIntersectLoss(nn.Module):
         flat_gt_poses = gt_poses.reshape((-1, 4, 3))
         for kpts in flat_gt_poses: # [4, 3]
             lines = []
-            kpts = kpts.numpy()
+            kpts = kpts.cpu().numpy()
             for edge, o in zip((kpts[[0, 1]], kpts[[0, 3]], kpts[[3, 2]]), (('trbl', 'bltr'), ('ltrb', 'rblt'), ('trbl', 'bltr'))):
                 line = [0]*3
                 if edge[:, -1].prod() > 0: # something visible
                     diff = edge[1][:2] - edge[0][:2]
-                    diff = diff / np.linalg.norm(diff) * diag
+                    diff = diff / (np.linalg.norm(diff) + 1.e-9) * diag
                     segment_extended = LineString((edge[0][:2] - diff, edge[1][:2] + diff))
                     intersection = segment_extended.intersection(enveloppe)
                     kpts_inter = list(zip(*intersection.xy))

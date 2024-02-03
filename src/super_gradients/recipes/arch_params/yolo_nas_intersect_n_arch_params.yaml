@@ -97,11 +97,15 @@ heads:
       - YoloNASIntersectDFLHead:
           bbox_inter_channels: 128
           pose_inter_channels: 128
+          line_inter_channels: 128
           pose_regression_blocks: 2
+          line_regression_blocks: 2
           shared_stem: False
           width_mult: 0.33
           pose_conf_in_class_head: True
+          line_conf_in_class_head: False
           pose_block_use_repvgg: False
+          line_block_use_repvgg: False
           first_conv_group_size: 0
           num_classes:
           stride: 8
@@ -109,11 +113,15 @@ heads:
       - YoloNASIntersectDFLHead:
           bbox_inter_channels: 256
           pose_inter_channels: 512
+          line_inter_channels: 512
           pose_regression_blocks: 2
+          line_regression_blocks: 2
           shared_stem: False
           width_mult: 0.33
           pose_conf_in_class_head: True
+          line_conf_in_class_head: False
           pose_block_use_repvgg: False
+          line_block_use_repvgg: False
           first_conv_group_size: 0
           num_classes:
           stride: 16
@@ -121,11 +129,15 @@ heads:
       - YoloNASIntersectDFLHead:
           bbox_inter_channels: 512
           pose_inter_channels: 512
+          line_inter_channels: 512
           pose_regression_blocks: 3
+          line_regression_blocks: 3
           shared_stem: False
           width_mult: 0.33
           pose_conf_in_class_head: True
+          line_conf_in_class_head: False
           pose_block_use_repvgg: False
+          line_block_use_repvgg: False
           first_conv_group_size: 0
           num_classes:
           stride: 32

@@ -10,42 +10,24 @@
 #
 
 defaults:
-  - training_hyperparams: aip_yolo_nas_intersect_train_params
-  - dataset_params: aip_pose_estimation_yolo_nas_mosaic_dataset_params
-  - arch_params: yolo_nas_intersect_n_arch_params
-  - checkpoint_params: default_checkpoint_params
+  - aip_yolo_nas_intersect_n
   - _self_
   - variable_setup
 
-architecture: yolo_nas_intersect_n
-
-# WARNING: patience set to 2
-
-image_size: 1024
-dataset_coco_root_dirpath: "/mnt/data1/user_cache/geoffrey.g.delhomme/data/2023_12/intersect/coco-1024x750"
-# dataset_coco_root_dirpath: "/Users/geoffreygdelhomme/Documents/Datasets/coco-1024x750"
-
 multi_gpu: DDP
-num_gpus: 4
+num_gpus: 0
 
-experiment_suffix: "baseline"
-experiment_name: aip_${architecture}_${image_size}_${experiment_suffix}
+experiment_suffix: "debug"
 
-arch_params:
-  num_classes: ${dataset_params.num_joints}
+dataset_coco_root_dirpath: "/Users/geoffreygdelhomme/Documents/Datasets/coco-1024x750"
 
 dataset_params:
-  line_colors:
-    - [0, 128, 128]
-    - [0, 0, 128]
-    - [128, 0, 128]
-  mosaic_prob: 0.25
   train_dataloader_params:
-    batch_size: 56
-    num_workers: 8
+    batch_size: 2
+    num_workers: 0
   val_dataloader_params:
-    batch_size: 56
-    num_workers: 8
+    batch_size: 2
+    num_workers: 0
 
 training_hyperparams:
   max_epochs: 40 # 300

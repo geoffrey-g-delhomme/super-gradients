@@ -30,7 +30,7 @@ class PoseEstimationSample:
     :param is_crowd:           (Optional) Numpy array of [N] shape with is_crowd flag for each instance
     """
 
-    __slots__ = ["image", "mask", "joints", "areas", "bboxes_xywh", "is_crowd", "additional_samples"]
+    __slots__ = ["image", "mask", "joints", "areas", "bboxes_xywh", "is_crowd", "additional_samples", "lines"]
 
     image: Union[np.ndarray, torch.Tensor]
     mask: Union[np.ndarray, torch.Tensor]

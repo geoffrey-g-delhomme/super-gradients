@@ -247,11 +247,11 @@ class ExtremeBatchIntersectEstimationVisualizationCallback(ExtremeBatchCaseVisua
                 lines = []
                 if isinstance(kpts, Tensor):
                     kpts = kpts.numpy()
-                for edge, o in zip((kpts[[0, 1]], kpts[[0, 3]], kpts[[3, 2]]), (('trbl', 'bltr'), ('ltrb', 'rblt'), ('trbl', 'bltr'))):
-                    line = [0]*5
-                    if edge[:, -1].prod() > 0: # something visible
+                for edge, o in zip((kpts[[0, 1]], kpts[[0, 3]], kpts[[3, 2]]), (("trbl", "bltr"), ("ltrb", "rblt"), ("trbl", "bltr"))):
+                    line = [0] * 5
+                    if edge[:, -1].prod() > 0:  # something visible
                         diff = edge[1][:2] - edge[0][:2]
-                        diff = diff / np.linalg.norm(diff) * diag
+                        diff = diff / (np.linalg.norm(diff) + 1.0e-9) * diag
                         segment_extended = LineString((edge[0][:2] - diff, edge[1][:2] + diff))
                         intersection = segment_extended.intersection(enveloppe)
                         kpts_inter = list(zip(*intersection.xy))
@@ -260,11 +260,11 @@ class ExtremeBatchIntersectEstimationVisualizationCallback(ExtremeBatchCaseVisua
                             line[1] = kpts_inter[0][1]
                             line[2] = kpts_inter[1][0]
                             line[3] = kpts_inter[1][1]
-                            line[4] = 1 # visible
+                            line[4] = 1  # visible
                     lines.append(line)
                 gt_lines_sample.append(lines)
             gt_lines.append(gt_lines_sample)
-                
+
         images_to_save_gt = self._visualize_batch(
             image_tensor=inputs,
             keypoints=[gt.joints for gt in gt_samples],
