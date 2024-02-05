@@ -103,7 +103,7 @@ heads:
           shared_stem: False
           width_mult: 0.33
           pose_conf_in_class_head: True
-          line_conf_in_class_head: False
+          line_conf_in_class_head: True
           pose_block_use_repvgg: False
           line_block_use_repvgg: False
           first_conv_group_size: 0
@@ -119,7 +119,7 @@ heads:
           shared_stem: False
           width_mult: 0.33
           pose_conf_in_class_head: True
-          line_conf_in_class_head: False
+          line_conf_in_class_head: True
           pose_block_use_repvgg: False
           line_block_use_repvgg: False
           first_conv_group_size: 0
@@ -135,7 +135,7 @@ heads:
           shared_stem: False
           width_mult: 0.33
           pose_conf_in_class_head: True
-          line_conf_in_class_head: False
+          line_conf_in_class_head: True
           pose_block_use_repvgg: False
           line_block_use_repvgg: False
           first_conv_group_size: 0

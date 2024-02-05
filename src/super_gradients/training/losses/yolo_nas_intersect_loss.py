@@ -189,7 +189,7 @@ class YoloNASIntersectTaskAlignedAssigner(nn.Module):
             pose_oks = batch_pose_oks(gt_poses, pred_pose_coords, gt_bboxes, self.sigmas.to(pred_pose_coords.device))
             ious = ious * pose_oks
             if ENABLE_LINE_OKS_IN_TASK_ASSIGNER:
-                line_oks = batch_pose_oks(gt_lines, pred_line_coords, gt_bboxes, torch.tensor([LINE_OKS_SIGMA]*num_lines).to(pred_pose_coords.device))
+                line_oks = batch_pose_oks(gt_lines, pred_line_coords, gt_bboxes, torch.tensor([LINE_OKS_SIGMA] * num_lines).to(pred_pose_coords.device))
                 ious = ious * line_oks
 
         # gather pred bboxes class score
@@ -308,7 +308,7 @@ class YoloNASIntersectLoss(nn.Module):
     def __init__(
         self,
         oks_sigmas: Union[List[float], np.ndarray, Tensor],
-        image_size: float, # FIXME: can be extracted from somewhere else?
+        image_size: float,  # FIXME: can be extracted from somewhere else?
         classification_loss_type: str = "focal",
         regression_iou_loss_type: str = "ciou",
         classification_loss_weight: float = 1.0,
@@ -320,6 +320,7 @@ class YoloNASIntersectLoss(nn.Module):
         line_cls_loss_weight: float = 1.0,
         line_reg_loss_weight: float = 1.0,
         line_classification_loss_type: str = "bce",
+        line_regression_loss_type: str = "bce",
         bbox_assigner_topk: int = 13,
         bbox_assigned_alpha: float = 1.0,
         bbox_assigned_beta: float = 6.0,
@@ -351,7 +352,7 @@ class YoloNASIntersectLoss(nn.Module):
         self.num_keypoints = len(oks_sigmas)
         self.num_classes = 1  # We have only one class in pose estimation task
         self.oks_sigmas = torch.tensor(oks_sigmas)
-        self.line_oks_sigmas = torch.tensor([LINE_OKS_SIGMA]*3)
+        self.line_oks_sigmas = torch.tensor([LINE_OKS_SIGMA] * 3)
         self.pose_cls_loss_weight = pose_cls_loss_weight
         self.pose_reg_loss_weight = pose_reg_loss_weight
         self.assigner = YoloNASIntersectTaskAlignedAssigner(
@@ -369,6 +370,7 @@ class YoloNASIntersectLoss(nn.Module):
         self.line_cls_loss_weight = line_cls_loss_weight
         self.line_reg_loss_weight = line_reg_loss_weight
         self.line_classification_loss_type = line_classification_loss_type
+        self.line_regression_loss_type = line_regression_loss_type
 
     @torch.no_grad()
     def _unpack_flat_targets(self, targets: Tuple[Tensor, Tensor, Tensor], batch_size: int) -> Mapping[str, torch.Tensor]:
@@ -431,7 +433,7 @@ class YoloNASIntersectLoss(nn.Module):
             "gt_crowd": torch.stack(per_image_crowds, dim=0),
         }
         return new_targets
-    
+
     @torch.no_grad()
     def compute_gt_lines(self, gt_poses):
         bounds = (0, 0, self.image_size, self.image_size)
@@ -439,21 +441,21 @@ class YoloNASIntersectLoss(nn.Module):
         diag = np.linalg.norm(bounds)
         gt_lines = []
         flat_gt_poses = gt_poses.reshape((-1, 4, 3))
-        for kpts in flat_gt_poses: # [4, 3]
+        for kpts in flat_gt_poses:  # [4, 3]
             lines = []
             kpts = kpts.cpu().numpy()
-            for edge, o in zip((kpts[[0, 1]], kpts[[0, 3]], kpts[[3, 2]]), (('trbl', 'bltr'), ('ltrb', 'rblt'), ('trbl', 'bltr'))):
-                line = [0]*3
-                if edge[:, -1].prod() > 0: # something visible
+            for edge, o in zip((kpts[[0, 1]], kpts[[0, 3]], kpts[[3, 2]]), (("trbl", "bltr"), ("ltrb", "rblt"), ("trbl", "bltr"))):
+                line = [0] * 3
+                if edge[:, -1].prod() > 0:  # something visible
                     diff = edge[1][:2] - edge[0][:2]
-                    diff = diff / (np.linalg.norm(diff) + 1.e-9) * diag
+                    diff = diff / (np.linalg.norm(diff) + 1.0e-9) * diag
                     segment_extended = LineString((edge[0][:2] - diff, edge[1][:2] + diff))
                     intersection = segment_extended.intersection(enveloppe)
                     kpts_inter = list(zip(*intersection.xy))
                     if len(kpts_inter) > 0:
                         line[0] = image2border(kpts_inter[0][0], kpts_inter[0][1], self.image_size, self.image_size, o[0])
                         line[1] = image2border(kpts_inter[1][0], kpts_inter[1][1], self.image_size, self.image_size, o[1])
-                        line[2] = 1 # visible
+                        line[2] = 1  # visible
                 lines.append(line)
             gt_lines.append(lines)
         return torch.tensor(gt_lines, dtype=gt_poses.dtype, device=gt_poses.device).reshape((gt_poses.shape[0], gt_poses.shape[1], 3, 3))
@@ -559,7 +561,18 @@ class YoloNASIntersectLoss(nn.Module):
         loss_line_reg = loss_line_reg * self.line_reg_loss_weight
 
         loss = loss_cls + loss_iou + loss_dfl + loss_pose_cls + loss_pose_reg + loss_line_reg
-        log_losses = torch.stack([loss_cls.detach(), loss_iou.detach(), loss_dfl.detach(), loss_pose_cls.detach(), loss_pose_reg.detach(), loss_line_cls.detach(), loss_line_reg.detach(), loss.detach()])
+        log_losses = torch.stack(
+            [
+                loss_cls.detach(),
+                loss_iou.detach(),
+                loss_dfl.detach(),
+                loss_pose_cls.detach(),
+                loss_pose_reg.detach(),
+                loss_line_cls.detach(),
+                loss_line_reg.detach(),
+                loss.detach(),
+            ]
+        )
 
         return loss, log_losses
 
@@ -632,7 +645,7 @@ class YoloNASIntersectLoss(nn.Module):
             regression_loss = (regression_loss_reduced * assigned_scores).sum() / assigned_scores_sum
 
         return regression_loss, classification_loss
-    
+
     def _intersect_loss(
         self,
         predicted_pose_coords: Tensor,
@@ -665,20 +678,28 @@ class YoloNASIntersectLoss(nn.Module):
         pose_visible_targets_mask: Tensor = (target_pose_visibility > 0).float()  # [Num Instances, Num Joints, 1]
         line_visible_targets_mask: Tensor = (target_line_visibility > 0).float()  # [Num Instances, Num Joints, 1]
 
-        # d = ((predicted_line_coords - target_line_coords) ** 2).sum(dim=-1, keepdim=True)  # [[Num Instances, Num Joints, 1]
-        # e = d / (2 * sigmas) ** 2 / (area + 1e-9) / 2  # [Num Instances, Num Joints, 1]
-        # regression_loss_unreduced = 1 - torch.exp(-e)  # [Num Instances, Num Joints, 1]
+        perim = self.image_size * 2 + self.image_size * 2
 
-        # TODO: check oks loss applied here
-        regression_loss_unreduced = torch.nn.functional.mse_loss(predicted_line_coords, target_line_coords, reduce=None) / (self.image_size * 2 + self.image_size * 2)
+        if self.line_regression_loss_type == "bce":
+            regression_loss_unreduced = torch.nn.functional.binary_cross_entropy_with_logits(
+                predicted_line_coords / perim, target_line_coords / perim, reduction="none"
+            )
+        elif self.line_regression_loss_type == "mse":
+            regression_loss_unreduced = torch.nn.functional.mse_loss(predicted_line_coords / perim, target_line_coords / perim, reduction="none")
+        elif self.line_regression_loss_type == "oks":
+            d = ((predicted_line_coords / perim - target_line_coords / perim) ** 2).sum(dim=-1, keepdim=True)  # [[Num Instances, Num Joints, 1]
+            # e = d / (2 * sigmas) ** 2 / (area + 1e-9) / 2  # [Num Instances, Num Joints, 1]
+            e = d / (2 * sigmas) ** 2 / 2  # [Num Instances, Num Joints, 1]
+            regression_loss_unreduced = 1 - torch.exp(-e)  # [Num Instances, Num Joints, 1]
 
         regression_loss_reduced = (regression_loss_unreduced * line_visible_targets_mask).sum(dim=1, keepdim=False) / (
             line_visible_targets_mask.sum(dim=1, keepdim=False) + 1e-9
         )  # [Num Instances, 1]
 
-
         if self.line_classification_loss_type == "bce":
-            classification_loss = torch.nn.functional.binary_cross_entropy_with_logits(predicted_line_logits, line_visible_targets_mask, reduction="none").mean(dim=1)
+            classification_loss = torch.nn.functional.binary_cross_entropy_with_logits(predicted_line_logits, line_visible_targets_mask, reduction="none").mean(
+                dim=1
+            )
         elif self.pose_classification_loss_type == "focal":
             classification_loss = self._focal_loss(predicted_line_logits, line_visible_targets_mask, alpha=0.25, gamma=2.0, reduction="none").mean(dim=1)
         else:
@@ -692,7 +713,6 @@ class YoloNASIntersectLoss(nn.Module):
             regression_loss = (regression_loss_reduced * assigned_scores).sum() / assigned_scores_sum
 
         return regression_loss, classification_loss
-
 
     def _xyxy_box_area(self, boxes):
         """
@@ -783,7 +803,6 @@ class YoloNASIntersectLoss(nn.Module):
                 sigmas=self.line_oks_sigmas.to(pred_pose_logits.device),
             )
 
-
         else:
             loss_iou = torch.zeros([], device=pred_bboxes.device)
             loss_dfl = torch.zeros([], device=pred_bboxes.device)
@@ -809,9 +828,9 @@ class YoloNASIntersectLoss(nn.Module):
 
         pred_dist = torch.nn.functional.conv2d(pred_dist.permute(0, 3, 1, 2), proj_conv).squeeze(1)
         return batch_distance2bbox(anchor_points, pred_dist), reg_max
-    
+
     def _line_decode(self, lines: Tensor) -> Tensor:
-        return lines.sigmoid() * (self.image_size*2 + self.image_size*2)
+        return lines.sigmoid() * (self.image_size * 2 + self.image_size * 2)
 
     def _bbox2distance(self, points, bbox, reg_max):
         x1y1, x2y2 = torch.split(bbox, 2, -1)

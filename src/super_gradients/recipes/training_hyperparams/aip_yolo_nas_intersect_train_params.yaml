@@ -31,8 +31,9 @@ criterion_params:
     pose_reg_loss_weight: 34.0
     pose_classification_loss_type: focal
     line_cls_loss_weight: 1.0 # NEW
-    line_reg_loss_weight: 1.0 # NEW
-    line_classification_loss_type: bce # NEW
+    line_reg_loss_weight: 34.0 # NEW
+    line_classification_loss_type: focal # NEW
+    line_regression_loss_type: oks # NEW
     rescale_pose_loss_with_assigned_score: True
     assigner_multiply_by_pose_oks: True
     image_size: ${image_size}
@@ -56,8 +57,8 @@ valid_metrics_list:
       max_objects_per_image: 30
       post_prediction_callback:
         _target_: super_gradients.training.models.intersect_models.yolo_nas_intersect.YoloNASIntersectPostPredictionCallback
-        pose_confidence_threshold: 0.1
-        nms_iou_threshold: 0.2
+        pose_confidence_threshold: 0.01
+        nms_iou_threshold: 0.7
         pre_nms_max_predictions: 300
         post_nms_max_predictions: 30
 
@@ -71,13 +72,13 @@ phase_callbacks:
       loss_to_monitor: YoloNASIntersectLoss/loss
       max: True
       freq: 1
-      max_images: 36
+      max_images: 16
       enable_on_train_loader: True
       enable_on_valid_loader: True
       post_prediction_callback:
         _target_: super_gradients.training.models.intersect_models.yolo_nas_intersect.YoloNASIntersectPostPredictionCallback
-        pose_confidence_threshold: 0.1
-        nms_iou_threshold: 0.2
+        pose_confidence_threshold: 0.3
+        nms_iou_threshold: 0.7
         pre_nms_max_predictions: 300
         post_nms_max_predictions: 30
   - EarlyStop:
