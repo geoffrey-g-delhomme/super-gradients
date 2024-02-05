@@ -12,7 +12,7 @@ from super_gradients.common.registry.registry import register_loss
 from super_gradients.common.environment.ddp_utils import get_world_size, is_distributed
 
 from super_gradients.training.utils.bbox_utils import batch_distance2bbox
-from super_gradients.training.utils.intersect_utils import border2image, image2border
+from super_gradients.training.utils.intersect_utils import LINE_BORDER_ORIENTATIONS, border2image, image2border
 from .functional import bbox_ciou_loss
 
 from .ppyolo_loss import GIoULoss, batch_iou_similarity, check_points_inside_bboxes, gather_topk_anchors, compute_max_iou_anchor
@@ -93,7 +93,7 @@ class YoloNASIntersectTaskAlignedAssigner(nn.Module):
     superior performance that the original approach.
     """
 
-    def __init__(self, sigmas: Tensor, topk: int = 13, alpha: float = 1.0, beta=6.0, eps=1e-9, multiply_by_pose_oks: bool = False):
+    def __init__(self, sigmas: Tensor, image_size, topk: int = 13, alpha: float = 1.0, beta=6.0, eps=1e-9, multiply_by_pose_oks: bool = False, multiply_by_line_oks: bool = False):
         """
 
         :param sigmas:               Sigmas for OKS calculation
@@ -109,7 +109,9 @@ class YoloNASIntersectTaskAlignedAssigner(nn.Module):
         self.beta = beta
         self.eps = eps
         self.sigmas = sigmas
+        self.image_size = image_size
         self.multiply_by_pose_oks = multiply_by_pose_oks
+        self.multiply_by_line_oks = multiply_by_line_oks
 
     @torch.no_grad()
     def forward(
@@ -125,7 +127,7 @@ class YoloNASIntersectTaskAlignedAssigner(nn.Module):
         gt_lines: Tensor,
         gt_crowd: Tensor,
         pad_gt_mask: Tensor,
-        bg_index: int,
+        bg_index: int
     ) -> YoloNASIntersectYoloNASIntersectBoxesAssignmentResult:
         """
         This code is based on https://github.com/fcjian/TOOD/blob/master/mmdet/core/bbox/assigners/task_aligned_assigner.py
@@ -188,9 +190,23 @@ class YoloNASIntersectTaskAlignedAssigner(nn.Module):
         if self.multiply_by_pose_oks:
             pose_oks = batch_pose_oks(gt_poses, pred_pose_coords, gt_bboxes, self.sigmas.to(pred_pose_coords.device))
             ious = ious * pose_oks
-            if ENABLE_LINE_OKS_IN_TASK_ASSIGNER:
-                line_oks = batch_pose_oks(gt_lines, pred_line_coords, gt_bboxes, torch.tensor([LINE_OKS_SIGMA] * num_lines).to(pred_pose_coords.device))
-                ious = ious * line_oks
+        if self.multiply_by_line_oks:
+            # TODO: Compute border lines
+            predicted_line_image_coords_list = []
+            target_line_image_coords_list = []
+            for i, o in enumerate(LINE_BORDER_ORIENTATIONS):
+                predicted_line_image_coords_from = border2image(pred_line_coords[..., i, 0], self.image_size, self.image_size, o[0])
+                target_line_image_coords_from = torch.cat((border2image(gt_lines[..., i, 0], self.image_size, self.image_size, o[0]), gt_lines[..., i, 2:3]), dim=-1)
+                predicted_line_image_coords_list.append(predicted_line_image_coords_from)
+                target_line_image_coords_list.append(target_line_image_coords_from)
+                predicted_line_image_coords_to = border2image(pred_line_coords[..., i, 1], self.image_size, self.image_size, o[1])
+                target_line_image_coords_to = torch.cat((border2image(gt_lines[..., i, 1], self.image_size, self.image_size, o[1]), gt_lines[..., i, 2:3]), dim=-1)
+                predicted_line_image_coords_list.append(predicted_line_image_coords_to)
+                target_line_image_coords_list.append(target_line_image_coords_to)
+            predicted_line_image_coords = torch.stack(predicted_line_image_coords_list, dim=-2)
+            target_line_image_coords = torch.stack(target_line_image_coords_list, dim=-2)
+            line_oks = batch_pose_oks(target_line_image_coords, predicted_line_image_coords, gt_bboxes, torch.tensor([LINE_OKS_SIGMA] * num_lines * 2).to(pred_pose_coords.device))
+            ious = ious * line_oks
 
         # gather pred bboxes class score
         pred_scores = torch.permute(pred_scores, [0, 2, 1])
@@ -321,10 +337,12 @@ class YoloNASIntersectLoss(nn.Module):
         line_reg_loss_weight: float = 1.0,
         line_classification_loss_type: str = "bce",
         line_regression_loss_type: str = "bce",
+        line_regression_loss_clip: bool = True,
         bbox_assigner_topk: int = 13,
         bbox_assigned_alpha: float = 1.0,
         bbox_assigned_beta: float = 6.0,
         assigner_multiply_by_pose_oks: bool = False,
+        assigner_multiply_by_line_oks: bool = False,
         rescale_pose_loss_with_assigned_score: bool = False,
         average_losses_in_ddp: bool = False,
     ):
@@ -361,6 +379,8 @@ class YoloNASIntersectLoss(nn.Module):
             alpha=bbox_assigned_alpha,
             beta=bbox_assigned_beta,
             multiply_by_pose_oks=assigner_multiply_by_pose_oks,
+            multiply_by_line_oks=assigner_multiply_by_line_oks,
+            image_size=image_size
         )
         self.pose_classification_loss_type = pose_classification_loss_type
         self.rescale_pose_loss_with_assigned_score = rescale_pose_loss_with_assigned_score
@@ -371,6 +391,7 @@ class YoloNASIntersectLoss(nn.Module):
         self.line_reg_loss_weight = line_reg_loss_weight
         self.line_classification_loss_type = line_classification_loss_type
         self.line_regression_loss_type = line_regression_loss_type
+        self.line_regression_loss_clip = line_regression_loss_clip
 
     @torch.no_grad()
     def _unpack_flat_targets(self, targets: Tuple[Tensor, Tensor, Tensor], batch_size: int) -> Mapping[str, torch.Tensor]:
@@ -444,7 +465,7 @@ class YoloNASIntersectLoss(nn.Module):
         for kpts in flat_gt_poses:  # [4, 3]
             lines = []
             kpts = kpts.cpu().numpy()
-            for edge, o in zip((kpts[[0, 1]], kpts[[0, 3]], kpts[[3, 2]]), (("trbl", "bltr"), ("ltrb", "rblt"), ("trbl", "bltr"))):
+            for edge, o in zip((kpts[[0, 1]], kpts[[0, 3]], kpts[[3, 2]]), LINE_BORDER_ORIENTATIONS):
                 line = [0] * 3
                 if edge[:, -1].prod() > 0:  # something visible
                     diff = edge[1][:2] - edge[0][:2]
@@ -645,6 +666,28 @@ class YoloNASIntersectLoss(nn.Module):
             regression_loss = (regression_loss_reduced * assigned_scores).sum() / assigned_scores_sum
 
         return regression_loss, classification_loss
+    
+    def _get_kpt_projected_on_line(
+        self, line_from: Tensor, border_from: str, line_to: Tensor, border_to: str, kpt: Tensor
+    ) -> Tensor:
+        """Compute the projection distance between the keypoint and the line
+
+        Args:
+            line_from (Tensor): _description_
+            border_from (str): _description_
+            line_to (Tensor): _description_
+            border_to (str): _description_
+            kpt (Tensor): _description_
+
+        Returns:
+            Tensor: _description_
+        """
+        p_line_from = border2image(line_from, self.image_size, self.image_size, border_from)
+        p_line_to = border2image(line_to, self.image_size, self.image_size, border_to)
+        l = torch.sum((p_line_to - p_line_from) ** 2, dim=-1)
+        t = torch.sum((kpt - p_line_from) * (p_line_to - p_line_from), dim=-1) / l
+        p_line = p_line_from + t.unsqueeze(-1)*(p_line_to - p_line_from)
+        return p_line
 
     def _intersect_loss(
         self,
@@ -685,17 +728,70 @@ class YoloNASIntersectLoss(nn.Module):
                 predicted_line_coords / perim, target_line_coords / perim, reduction="none"
             )
         elif self.line_regression_loss_type == "mse":
-            regression_loss_unreduced = torch.nn.functional.mse_loss(predicted_line_coords / perim, target_line_coords / perim, reduction="none")
+            regression_loss_unreduced = torch.nn.functional.mse_loss(predicted_line_coords, target_line_coords, reduction="none").sum(dim=-1, keepdim=True) / perim**2
+        elif self.line_regression_loss_type == "umse":
+            regression_loss_unreduced_list = []
+            for i in range(predicted_line_coords.shape[-1]):
+                regression_loss_unreduced_list.append(torch.nn.functional.mse_loss(predicted_line_coords[..., i], target_line_coords[..., i], reduction="none").sum(dim=-1, keepdim=True))
+            regression_loss_unreduced = torch.stack(regression_loss_unreduced_list, dim=0).mean(dim=0) / perim**2
         elif self.line_regression_loss_type == "oks":
-            d = ((predicted_line_coords / perim - target_line_coords / perim) ** 2).sum(dim=-1, keepdim=True)  # [[Num Instances, Num Joints, 1]
+            d = ((predicted_line_coords - target_line_coords) ** 2).sum(dim=-1, keepdim=True)  # [[Num Instances, Num Joints, 1]
             # e = d / (2 * sigmas) ** 2 / (area + 1e-9) / 2  # [Num Instances, Num Joints, 1]
-            e = d / (2 * sigmas) ** 2 / 2  # [Num Instances, Num Joints, 1]
+            e = d / (2 * sigmas) ** 2 / perim ** 2 / 2  # [Num Instances, Num Joints, 1]
             regression_loss_unreduced = 1 - torch.exp(-e)  # [Num Instances, Num Joints, 1]
+        elif self.line_regression_loss_type == "uoks":
+            regression_loss_unreduced_list = []
+            for i in range(predicted_line_coords.shape[-1]):
+                d = ((predicted_line_coords[..., i] - target_line_coords[..., i]) ** 2).sum(dim=-1, keepdim=True)  # [[Num Instances, Num Joints, 1]
+                # e = d / (2 * sigmas) ** 2 / (area + 1e-9) / 2  # [Num Instances, Num Joints, 1]
+                e = d / (2 * sigmas) ** 2 / perim / 2  # [Num Instances, Num Joints, 1]
+                regression_loss_unreduced_item = 1 - torch.exp(-e)  # [Num Instances, Num Joints, 1]
+                regression_loss_unreduced_list.append(regression_loss_unreduced_item)
+            regression_loss_unreduced = torch.stack(regression_loss_unreduced_list, dim=0).mean(dim=0)
+        elif self.line_regression_loss_type == "proj_oks":
+            regression_loss_unreduced_list = []
+            for i, o in enumerate(LINE_BORDER_ORIENTATIONS):
+                predicted_line_image_coords_from = border2image(predicted_line_coords[..., i, 0], self.image_size, self.image_size, o[0])
+                target_line_image_coords_from = border2image(target_line_coords[..., i, 0], self.image_size, self.image_size, o[0])
+                predicted_line_image_coords_to = border2image(predicted_line_coords[..., i, 1], self.image_size, self.image_size, o[1])
+                target_line_image_coords_to = border2image(target_line_coords[..., i, 1], self.image_size, self.image_size, o[1])
+                d = ((predicted_line_image_coords_from - target_line_image_coords_from) ** 2).sum(dim=-1, keepdim=True)
+                e = d / (2 * sigmas[:, i]) ** 2 / (area.squeeze(-1) + 1.e-9) / 2
+                regression_loss_unreduced_from = 1 - torch.exp(-e)
+                d = ((predicted_line_image_coords_to - target_line_image_coords_to) ** 2).sum(dim=-1, keepdim=True)
+                e = d / (2 * sigmas[:, i]) ** 2 / (area.squeeze(-1) + 1.e-9) / 2
+                regression_loss_unreduced_to = 1 - torch.exp(-e)
+                regression_loss_unreduced_list.append(regression_loss_unreduced_from + regression_loss_unreduced_to)
+            regression_loss_unreduced = torch.stack(regression_loss_unreduced_list, dim=-2)
 
         regression_loss_reduced = (regression_loss_unreduced * line_visible_targets_mask).sum(dim=1, keepdim=False) / (
             line_visible_targets_mask.sum(dim=1, keepdim=False) + 1e-9
         )  # [Num Instances, 1]
 
+        # clip kpt and line
+        if self.line_regression_loss_clip:
+            orientations = LINE_BORDER_ORIENTATIONS
+            kpt_indices_list = [[0], [0,3], [0]]
+            regression_loss_reduced_list = []
+            for i_line in range(predicted_line_coords.shape[-2]):
+                o = orientations[i_line]
+                for kpt_indice in kpt_indices_list[i_line]:
+                    kpt = predicted_pose_coords[..., kpt_indice, :]
+                    proj = self._get_kpt_projected_on_line(predicted_line_coords[..., i_line, 0], o[0], predicted_line_coords[..., i_line, 0], o[1], kpt)
+                    if "oks" in self.line_regression_loss_type:
+                        d = ((kpt - proj) ** 2).sum(dim=-1, keepdim=True)
+                        e = d / (2 * sigmas[:, i_line]) ** 2 / (area.squeeze(-1) + 1e-9) / 2
+                        regression_loss_unreduced = 1 - torch.exp(-e)
+                    elif "mse" in self.line_regression_loss_type:
+                        regression_loss_unreduced = torch.nn.functional.mse_loss(kpt, proj, reduction="none").sum(dim=-1, keepdim=True) / perim
+                    visible_mask = line_visible_targets_mask[:, i_line, :] * pose_visible_targets_mask[..., kpt_indice, :]
+                    regression_loss_reduced = (regression_loss_unreduced * visible_mask).sum(dim=-1, keepdim=False) / (
+                        visible_mask.sum(dim=1, keepdim=False) + 1e-9
+                    )
+                    regression_loss_reduced_list.append(regression_loss_reduced)
+            regression_loss_reduced_clip = torch.stack(regression_loss_reduced_list, dim=0).sum(dim=0)
+            regression_loss_reduced = regression_loss_reduced + regression_loss_reduced_clip
+    
         if self.line_classification_loss_type == "bce":
             classification_loss = torch.nn.functional.binary_cross_entropy_with_logits(predicted_line_logits, line_visible_targets_mask, reduction="none").mean(
                 dim=1

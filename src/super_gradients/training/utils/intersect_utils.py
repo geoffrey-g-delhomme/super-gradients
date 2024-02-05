@@ -1,5 +1,7 @@
 import torch
 
+LINE_BORDER_ORIENTATIONS = (("trbl", "bltr"), ("rblt", "ltrb"), ("trbl", "bltr")) # left line, bottom line, right line
+
 def image2border(x, y, w, h, borders):
     z = 0.
     borders += borders[0]

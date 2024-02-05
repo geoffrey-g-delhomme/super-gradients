@@ -11,6 +11,7 @@ from shapely import LineString, Polygon, box
 from super_gradients.common.registry.registry import register_callback
 from super_gradients.training.datasets.data_formats.bbox_formats.xywh import xywh_to_xyxy
 from super_gradients.training.utils.callbacks.callbacks import ExtremeBatchCaseVisualizationCallback
+from super_gradients.training.utils.intersect_utils import LINE_BORDER_ORIENTATIONS
 from super_gradients.training.utils.visualization.pose_estimation import IntersectVisualization
 
 # These imports are required for type hints and not used anywhere else
@@ -247,7 +248,7 @@ class ExtremeBatchIntersectEstimationVisualizationCallback(ExtremeBatchCaseVisua
                 lines = []
                 if isinstance(kpts, Tensor):
                     kpts = kpts.numpy()
-                for edge, o in zip((kpts[[0, 1]], kpts[[0, 3]], kpts[[3, 2]]), (("trbl", "bltr"), ("ltrb", "rblt"), ("trbl", "bltr"))):
+                for edge, o in zip((kpts[[0, 1]], kpts[[0, 3]], kpts[[3, 2]]), LINE_BORDER_ORIENTATIONS):
                     line = [0] * 5
                     if edge[:, -1].prod() > 0:  # something visible
                         diff = edge[1][:2] - edge[0][:2]

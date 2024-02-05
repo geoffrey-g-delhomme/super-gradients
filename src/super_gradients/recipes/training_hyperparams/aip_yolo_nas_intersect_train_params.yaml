@@ -33,9 +33,11 @@ criterion_params:
     line_cls_loss_weight: 1.0 # NEW
     line_reg_loss_weight: 34.0 # NEW
     line_classification_loss_type: focal # NEW
-    line_regression_loss_type: oks # NEW
+    line_regression_loss_type: proj_oks # NEW
+    line_regression_loss_clip: True # NEW
     rescale_pose_loss_with_assigned_score: True
     assigner_multiply_by_pose_oks: True
+    assigner_multiply_by_line_oks: True
     image_size: ${image_size}
 
 optimizer: AdamW

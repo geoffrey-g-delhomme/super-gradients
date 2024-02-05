@@ -11,7 +11,7 @@ from super_gradients.modules.base_modules import BaseDetectionModule
 from super_gradients.training.models.detection_models.pp_yolo_e.pp_yolo_head import generate_anchors_for_grid_cell
 from super_gradients.training.utils import HpmStruct, torch_version_is_greater_or_equal
 from super_gradients.training.utils.bbox_utils import batch_distance2bbox
-from super_gradients.training.utils.intersect_utils import border2image
+from super_gradients.training.utils.intersect_utils import LINE_BORDER_ORIENTATIONS, border2image
 from super_gradients.training.utils.utils import infer_model_dtype, infer_model_device
 
 # Declare type aliases for better readability
@@ -209,10 +209,18 @@ class YoloNASIntersectNDFLHeads(BaseDetectionModule, SupportsReplaceNumClasses):
         # change from border coordinates to xy image coordinates
         image_width, image_height = int(w * stride_tensor[-1].cpu()), int(h * stride_tensor[-1].cpu())
         image_perim = image_width * 2 + image_height * 2
-        pred_line_coords_left = torch.stack((border2image(pred_line_coords[:, :, [0], [0]]*image_perim, image_width, image_height, "trbl"), border2image(pred_line_coords[:, :, [0], [1]]*image_perim, image_width, image_height, "bltr")), dim=-2)
-        pred_line_coords_bottom = torch.stack((border2image(pred_line_coords[:, :, [1], [0]]*image_perim, image_width, image_height, "ltrb"), border2image(pred_line_coords[:, :, [1], [1]]*image_perim, image_width, image_height, "rblt")), dim=-2)
-        pred_line_coords_right = torch.stack((border2image(pred_line_coords[:, :, [2], [0]]*image_perim, image_width, image_height, "trbl"), border2image(pred_line_coords[:, :, [2], [1]]*image_perim, image_width, image_height, "bltr")), dim=-2)
-        pred_line_coords = torch.cat((pred_line_coords_left, pred_line_coords_bottom, pred_line_coords_right), dim=-3)  # [B, Anchors, L, 2, 2]
+        pred_line_coords_list = []
+        for i_line, o in enumerate(LINE_BORDER_ORIENTATIONS):
+            pred_line_coords_list.append(
+                torch.stack((
+                    border2image(pred_line_coords[:, :, [i_line], [0]]*image_perim, image_width, image_height, o[0]),
+                    border2image(pred_line_coords[:, :, [i_line], [1]]*image_perim, image_width, image_height, o[1])), dim=-2)
+            )
+        # pred_line_coords_left = torch.stack((border2image(pred_line_coords[:, :, [0], [0]]*image_perim, image_width, image_height, "trbl"), border2image(pred_line_coords[:, :, [0], [1]]*image_perim, image_width, image_height, "bltr")), dim=-2)
+        # pred_line_coords_bottom = torch.stack((border2image(pred_line_coords[:, :, [1], [0]]*image_perim, image_width, image_height, "ltrb"), border2image(pred_line_coords[:, :, [1], [1]]*image_perim, image_width, image_height, "rblt")), dim=-2)
+        # pred_line_coords_right = torch.stack((border2image(pred_line_coords[:, :, [2], [0]]*image_perim, image_width, image_height, "trbl"), border2image(pred_line_coords[:, :, [2], [1]]*image_perim, image_width, image_height, "bltr")), dim=-2)
+        # pred_line_coords = torch.cat((pred_line_coords_left, pred_line_coords_bottom, pred_line_coords_right), dim=-3)  # [B, Anchors, L, 2, 2]
+        pred_line_coords = torch.cat(pred_line_coords_list, dim=-3)  # [B, Anchors, L, 2, 2]
 
         decoded_predictions = pred_bboxes, pred_scores, pred_pose_coords, pred_pose_scores, pred_line_coords, pred_line_scores
 
