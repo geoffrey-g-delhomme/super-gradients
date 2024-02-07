@@ -70,44 +70,45 @@ def image2border(x, y, w, h, borders):
     return z
 
 def border2image(z, w, h, borders):
+    zero = w*0
     if borders == "trbl":
         x = (
-            torch.clip(z, 0., w/2) + w/2 +
-            torch.clip(w - (z - w/2 - h), 0., w) - w +
-            torch.clip(z - w/2 - h - w - h, 0., w/2)
+            torch.clip(z, zero, w/2) + w/2 +
+            torch.clip(w - (z - w/2 - h), zero, w) - w +
+            torch.clip(z - w/2 - h - w - h, zero, w/2)
         )
         y = (
-            torch.clip(z - w/2, 0., h) +
-            torch.clip(h - (z - w/2 - h - w), 0., h) - h
+            torch.clip(z - w/2, zero, h) +
+            torch.clip(h - (z - w/2 - h - w), zero, h) - h
         )
     elif borders == "rblt":
         x = (
-            torch.clip(w - (z - h/2), 0., w) - w +
-            torch.clip(z - h/2 - w - h, 0., w) + w
+            torch.clip(w - (z - h/2), zero, w) - w +
+            torch.clip(z - h/2 - w - h, zero, w) + w
         )
         y = (
-            torch.clip(z, 0., h/2) + h/2 +
-            torch.clip(h - (z - h/2 - w), 0., h) - h +
-            torch.clip(z - h/2 - w - h - w, 0., h/2)
+            torch.clip(z, zero, h/2) + h/2 +
+            torch.clip(h - (z - h/2 - w), zero, h) - h +
+            torch.clip(z - h/2 - w - h - w, zero, h/2)
         )
     elif borders == "bltr":
         x = (
-            torch.clip(w/2 - z, 0., w/2) +
-            torch.clip(z - w/2 - h, 0., w) +
-            torch.clip(w/2 - (z - w/2 - h - w - h), 0., w/2) - w/2
+            torch.clip(w/2 - z, zero, w/2) +
+            torch.clip(z - w/2 - h, zero, w) +
+            torch.clip(w/2 - (z - w/2 - h - w - h), zero, w/2) - w/2
         )
         y = (
-            torch.clip(h - (z - w/2), 0., h) +
-            torch.clip(z - w/2 - h - w, 0., h)
+            torch.clip(h - (z - w/2), zero, h) +
+            torch.clip(z - w/2 - h - w, zero, h)
         )
     elif borders == "ltrb":
         x = (
-            torch.clip(z - h/2, 0., w) +
-            torch.clip(w - (z - h/2 - w - h), 0., w) - w
+            torch.clip(z - h/2, zero, w) +
+            torch.clip(w - (z - h/2 - w - h), zero, w) - w
         )
         y = (
-            torch.clip(h/2 - z, 0., h/2) +
-            torch.clip(z - h/2 - w, 0., h) +
-            torch.clip(h/2 - (z - h/2 - w - h - w), 0., h/2) - h/2
+            torch.clip(h/2 - z, zero, h/2) +
+            torch.clip(z - h/2 - w, zero, h) +
+            torch.clip(h/2 - (z - h/2 - w - h - w), zero, h/2) - h/2
         )
     return torch.stack((x, y), dim=-1)

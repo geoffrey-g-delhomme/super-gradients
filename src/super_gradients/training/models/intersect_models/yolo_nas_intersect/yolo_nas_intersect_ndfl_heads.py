@@ -206,28 +206,27 @@ class YoloNASIntersectNDFLHeads(BaseDetectionModule, SupportsReplaceNumClasses):
         pred_line_coords = line_regression_list.detach().clone().sigmoid()  # [B, Anchors, L, 2]
         pred_line_scores = line_logits_list.detach().clone().sigmoid()  # [B, Anchors, L]
 
+        anchors, anchor_points, num_anchors_list, _ = generate_anchors_for_grid_cell(feats, self.fpn_strides, self.grid_cell_scale, self.grid_cell_offset)
+
         # change from border coordinates to xy image coordinates
-        image_width, image_height = int(w * stride_tensor[-1].cpu()), int(h * stride_tensor[-1].cpu())
-        image_perim = image_width * 2 + image_height * 2
+        image_size = int(w * stride_tensor[-1].cpu())
+        crop_size = image_size / (stride_tensor.unsqueeze(0).unsqueeze(2) / stride_tensor.min())
         pred_line_coords_list = []
         for i_line, o in enumerate(LINE_BORDER_ORIENTATIONS):
             pred_line_coords_list.append(
                 torch.stack((
-                    border2image(pred_line_coords[:, :, [i_line], [0]]*image_perim, image_width, image_height, o[0]),
-                    border2image(pred_line_coords[:, :, [i_line], [1]]*image_perim, image_width, image_height, o[1])), dim=-2)
+                    # border2image(pred_line_coords[:, :, [i_line], [0]], image_width, image_height, o[0]) / (stride_tensor.unsqueeze(0).unsqueeze(2) / stride_tensor.min()) + anchor_points.unsqueeze(0).unsqueeze(2),
+                    border2image(pred_line_coords[:, :, [i_line], [0]], 1, 1, o[0]) * crop_size + anchor_points.unsqueeze(0).unsqueeze(2) - crop_size/2,
+                    # border2image(pred_line_coords[:, :, [i_line], [1]], image_width, image_height, o[1]) / (stride_tensor.unsqueeze(0).unsqueeze(2) / stride_tensor.min()) + anchor_points.unsqueeze(0).unsqueeze(2),
+                    border2image(pred_line_coords[:, :, [i_line], [1]], 1, 1, o[1]) * crop_size + anchor_points.unsqueeze(0).unsqueeze(2) - crop_size/2,
+                ), dim=-2)
             )
-        # pred_line_coords_left = torch.stack((border2image(pred_line_coords[:, :, [0], [0]]*image_perim, image_width, image_height, "trbl"), border2image(pred_line_coords[:, :, [0], [1]]*image_perim, image_width, image_height, "bltr")), dim=-2)
-        # pred_line_coords_bottom = torch.stack((border2image(pred_line_coords[:, :, [1], [0]]*image_perim, image_width, image_height, "ltrb"), border2image(pred_line_coords[:, :, [1], [1]]*image_perim, image_width, image_height, "rblt")), dim=-2)
-        # pred_line_coords_right = torch.stack((border2image(pred_line_coords[:, :, [2], [0]]*image_perim, image_width, image_height, "trbl"), border2image(pred_line_coords[:, :, [2], [1]]*image_perim, image_width, image_height, "bltr")), dim=-2)
-        # pred_line_coords = torch.cat((pred_line_coords_left, pred_line_coords_bottom, pred_line_coords_right), dim=-3)  # [B, Anchors, L, 2, 2]
         pred_line_coords = torch.cat(pred_line_coords_list, dim=-3)  # [B, Anchors, L, 2, 2]
 
         decoded_predictions = pred_bboxes, pred_scores, pred_pose_coords, pred_pose_scores, pred_line_coords, pred_line_scores
 
         if torch.jit.is_tracing() or self.inference_mode:
             return decoded_predictions
-
-        anchors, anchor_points, num_anchors_list, _ = generate_anchors_for_grid_cell(feats, self.fpn_strides, self.grid_cell_scale, self.grid_cell_offset)
 
         raw_predictions = cls_score_list, reg_distri_list, pose_regression_list, pose_logits_list, line_regression_list, line_logits_list, anchors, anchor_points, num_anchors_list, stride_tensor
         return decoded_predictions, raw_predictions

@@ -344,7 +344,6 @@ class IntersectVisualization:
                     title += f"{scores[pose_index]:.2f}"
                 if is_crowd is not None:
                     title += f"Crowd {is_crowd[pose_index]}"
-
                 res_image = draw_bbox(
                     image=res_image,
                     x1=x1,
@@ -352,7 +351,7 @@ class IntersectVisualization:
                     x2=x2,
                     y2=y2,
                     color=(255, 255, 255),
-                    title=title,
+                    title=(title if len(title) else None),
                     box_thickness=current_box_thickness,
                 )
 

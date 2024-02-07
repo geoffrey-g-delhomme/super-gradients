@@ -89,7 +89,8 @@ class YoloNASIntersectPostPredictionCallback(AbstractIntersectEstimationPostPred
 
             final_lines = torch.cat(
                 [
-                    pred_line_coords[idx_to_keep].flatten(-2),
+                    pred_line_coords[idx_to_keep, :, 0, :],
+                    pred_line_coords[idx_to_keep, :, 1, :],
                     pred_line_scores[idx_to_keep].unsqueeze(-1),
                 ],
                 dim=-1,

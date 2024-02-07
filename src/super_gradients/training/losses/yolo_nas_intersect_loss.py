@@ -37,7 +37,6 @@ class YoloNASIntersectYoloNASIntersectBoxesAssignmentResult:
     :param assigned_bboxes: Tensor of shape (B, L, 4) - Assigned groundtruth boxes in XYXY format for each anchor location
     :param assigned_scores: Tensor of shape (B, L, C) - Assigned scores for each anchor location
     :param assigned_poses: Tensor of shape (B, L, 17, 3) - Assigned groundtruth poses for each anchor location
-    :param assigned_lines: Tensor of shape (B, L, 17, 3) - Assigned groundtruth lines for each anchor location
     :param assigned_gt_index: Tensor of shape (B, L) - Index of assigned groundtruth box for each anchor location
     :param assigned_crowd: Tensor of shape (B, L) - Whether the assigned groundtruth box is crowd
     """
@@ -45,7 +44,6 @@ class YoloNASIntersectYoloNASIntersectBoxesAssignmentResult:
     assigned_labels: Tensor
     assigned_bboxes: Tensor
     assigned_poses: Tensor
-    assigned_lines: Tensor
     assigned_scores: Tensor
     assigned_gt_index: Tensor
     assigned_crowd: Tensor
@@ -121,7 +119,6 @@ class YoloNASIntersectTaskAlignedAssigner(nn.Module):
         self.sigmas = sigmas
         self.image_size = image_size
         self.multiply_by_pose_oks = multiply_by_pose_oks
-        self.multiply_by_line_oks = multiply_by_line_oks
 
     @torch.no_grad()
     def forward(
@@ -131,10 +128,10 @@ class YoloNASIntersectTaskAlignedAssigner(nn.Module):
         pred_pose_coords: Tensor,
         pred_line_coords: Tensor,
         anchor_points: Tensor,
+        stride_tensor: Tensor,
         gt_labels: Tensor,
         gt_bboxes: Tensor,
         gt_poses: Tensor,
-        gt_lines: Tensor,
         gt_crowd: Tensor,
         pad_gt_mask: Tensor,
         bg_index: int,
@@ -179,7 +176,6 @@ class YoloNASIntersectTaskAlignedAssigner(nn.Module):
             assigned_labels = torch.full([batch_size, num_anchors], bg_index, dtype=torch.long, device=gt_labels.device)
             assigned_bboxes = torch.zeros([batch_size, num_anchors, 4], device=gt_labels.device)
             assigned_poses = torch.zeros([batch_size, num_anchors, num_keypoints, 3], device=gt_labels.device)
-            assigned_lines = torch.zeros([batch_size, num_anchors, num_lines, 3], device=gt_labels.device)
             assigned_scores = torch.zeros([batch_size, num_anchors, num_classes], device=gt_labels.device)
             assigned_gt_index = torch.zeros([batch_size, num_anchors], dtype=torch.long, device=gt_labels.device)
             assigned_crowd = torch.zeros([batch_size, num_anchors], dtype=torch.bool, device=gt_labels.device)
@@ -190,7 +186,6 @@ class YoloNASIntersectTaskAlignedAssigner(nn.Module):
                 assigned_scores=assigned_scores,
                 assigned_gt_index=assigned_gt_index,
                 assigned_poses=assigned_poses,
-                assigned_lines=assigned_lines,
                 assigned_crowd=assigned_crowd,
             )
 
@@ -200,28 +195,6 @@ class YoloNASIntersectTaskAlignedAssigner(nn.Module):
         if self.multiply_by_pose_oks:
             pose_oks = batch_pose_oks(gt_poses, pred_pose_coords, gt_bboxes, self.sigmas.to(pred_pose_coords.device))
             ious = ious * pose_oks
-        if self.multiply_by_line_oks:
-            predicted_line_image_coords_list = []
-            target_line_image_coords_list = []
-            for i, o in enumerate(LINE_BORDER_ORIENTATIONS):
-                predicted_line_image_coords_from = border2image(pred_line_coords[..., i, 0], self.image_size, self.image_size, o[0])
-                target_line_image_coords_from = torch.cat(
-                    (border2image(gt_lines[..., i, 0], self.image_size, self.image_size, o[0]), gt_lines[..., i, 2:3]), dim=-1
-                )
-                predicted_line_image_coords_list.append(predicted_line_image_coords_from)
-                target_line_image_coords_list.append(target_line_image_coords_from)
-                predicted_line_image_coords_to = border2image(pred_line_coords[..., i, 1], self.image_size, self.image_size, o[1])
-                target_line_image_coords_to = torch.cat(
-                    (border2image(gt_lines[..., i, 1], self.image_size, self.image_size, o[1]), gt_lines[..., i, 2:3]), dim=-1
-                )
-                predicted_line_image_coords_list.append(predicted_line_image_coords_to)
-                target_line_image_coords_list.append(target_line_image_coords_to)
-            predicted_line_image_coords = torch.stack(predicted_line_image_coords_list, dim=-2)
-            target_line_image_coords = torch.stack(target_line_image_coords_list, dim=-2)
-            line_oks = batch_pose_oks(
-                target_line_image_coords, predicted_line_image_coords, gt_bboxes, torch.tensor([LINE_OKS_SIGMA] * num_lines * 2).to(pred_pose_coords.device)
-            )
-            ious = ious * line_oks
 
         # gather pred bboxes class score
         pred_scores = torch.permute(pred_scores, [0, 2, 1])
@@ -265,9 +238,6 @@ class YoloNASIntersectTaskAlignedAssigner(nn.Module):
         assigned_poses = gt_poses.reshape([-1, num_keypoints, 3])[assigned_gt_index.flatten(), :]
         assigned_poses = assigned_poses.reshape([batch_size, num_anchors, num_keypoints, 3])
 
-        assigned_lines = gt_lines.reshape([-1, num_lines, 3])[assigned_gt_index.flatten(), :]
-        assigned_lines = assigned_lines.reshape([batch_size, num_anchors, num_lines, 3])
-
         assigned_scores = torch.nn.functional.one_hot(assigned_labels, num_classes + 1)
         ind = list(range(num_classes + 1))
         ind.remove(bg_index)
@@ -290,7 +260,6 @@ class YoloNASIntersectTaskAlignedAssigner(nn.Module):
             assigned_bboxes=assigned_bboxes,
             assigned_scores=assigned_scores,
             assigned_poses=assigned_poses,
-            assigned_lines=assigned_lines,
             assigned_gt_index=assigned_gt_index,
             assigned_crowd=assigned_crowd,
         )
@@ -357,7 +326,6 @@ class YoloNASIntersectLoss(nn.Module):
         bbox_assigned_alpha: float = 1.0,
         bbox_assigned_beta: float = 6.0,
         assigner_multiply_by_pose_oks: bool = False,
-        assigner_multiply_by_line_oks: bool = False,
         rescale_pose_loss_with_assigned_score: bool = False,
         average_losses_in_ddp: bool = False,
     ):
@@ -394,7 +362,6 @@ class YoloNASIntersectLoss(nn.Module):
             alpha=bbox_assigned_alpha,
             beta=bbox_assigned_beta,
             multiply_by_pose_oks=assigner_multiply_by_pose_oks,
-            multiply_by_line_oks=assigner_multiply_by_line_oks,
             image_size=image_size,
         )
         self.pose_classification_loss_type = pose_classification_loss_type
@@ -470,32 +437,6 @@ class YoloNASIntersectLoss(nn.Module):
         }
         return new_targets
 
-    @torch.no_grad()
-    def compute_gt_lines(self, gt_poses):
-        bounds = (0, 0, self.image_size, self.image_size)
-        enveloppe = box(*bounds)
-        diag = np.linalg.norm(bounds)
-        gt_lines = []
-        flat_gt_poses = gt_poses.reshape((-1, 4, 3))
-        for kpts in flat_gt_poses:  # [4, 3]
-            lines = []
-            kpts = kpts.cpu().numpy()
-            for edge, o in zip((kpts[[0, 1]], kpts[[0, 3]], kpts[[3, 2]]), LINE_BORDER_ORIENTATIONS):
-                line = [0] * 3
-                if edge[:, -1].prod() > 0:  # something visible
-                    diff = edge[1][:2] - edge[0][:2]
-                    diff = diff / (np.linalg.norm(diff) + 1.0e-9) * diag
-                    segment_extended = LineString((edge[0][:2] - diff, edge[1][:2] + diff))
-                    intersection = segment_extended.intersection(enveloppe)
-                    kpts_inter = list(zip(*intersection.xy))
-                    if len(kpts_inter) > 0:
-                        line[0] = image2border(kpts_inter[0][0], kpts_inter[0][1], self.image_size, self.image_size, o[0])
-                        line[1] = image2border(kpts_inter[1][0], kpts_inter[1][1], self.image_size, self.image_size, o[1])
-                        line[2] = 1  # visible
-                lines.append(line)
-            gt_lines.append(lines)
-        return torch.tensor(gt_lines, dtype=gt_poses.dtype, device=gt_poses.device).reshape((gt_poses.shape[0], gt_poses.shape[1], 3, 3))
-
     def forward(
         self,
         outputs: Tuple[Tuple[Tensor, Tensor, Tensor, Tensor], Tuple[Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, Tensor]],
@@ -530,16 +471,13 @@ class YoloNASIntersectLoss(nn.Module):
         anchor_points_s = anchor_points / stride_tensor
         pred_bboxes, reg_max = self._bbox_decode(anchor_points_s, pred_distri)
 
-        pred_line_coords = self._line_decode(pred_line_coords_logits)
+        pred_line_coords = pred_line_coords_logits.sigmoid()
 
         gt_labels = targets["gt_class"]
         gt_bboxes = targets["gt_bbox"]
         gt_poses = targets["gt_poses"]
         gt_crowd = targets["gt_crowd"]
         pad_gt_mask = targets["pad_gt_mask"]
-
-        # compute gt_lines
-        gt_lines = self.compute_gt_lines(gt_poses)
 
         # label assignment
         assign_result = self.assigner(
@@ -548,10 +486,10 @@ class YoloNASIntersectLoss(nn.Module):
             pred_pose_coords=pred_pose_coords.detach(),
             pred_line_coords=pred_line_coords.detach(),
             anchor_points=anchor_points,
+            stride_tensor=stride_tensor,
             gt_labels=gt_labels,
             gt_bboxes=gt_bboxes,
             gt_poses=gt_poses,
-            gt_lines=gt_lines,
             gt_crowd=gt_crowd,
             pad_gt_mask=pad_gt_mask,
             bg_index=self.num_classes,
@@ -638,6 +576,7 @@ class YoloNASIntersectLoss(nn.Module):
         target_visibility: Tensor,
         area: Tensor,
         sigmas: Tensor,
+        pose_classification_loss_type: str,
         assigned_scores: Optional[Tensor] = None,
         assigned_scores_sum: Optional[Tensor] = None,
     ) -> Tuple[Tensor, Tensor]:
@@ -666,9 +605,9 @@ class YoloNASIntersectLoss(nn.Module):
             visible_targets_mask.sum(dim=1, keepdim=False) + 1e-9
         )  # [Num Instances, 1]
 
-        if self.pose_classification_loss_type == "bce":
+        if pose_classification_loss_type == "bce":
             classification_loss = torch.nn.functional.binary_cross_entropy_with_logits(predicted_logits, visible_targets_mask, reduction="none").mean(dim=1)
-        elif self.pose_classification_loss_type == "focal":
+        elif pose_classification_loss_type == "focal":
             classification_loss = self._focal_loss(predicted_logits, visible_targets_mask, alpha=0.25, gamma=2.0, reduction="none").mean(dim=1)
         else:
             raise ValueError(f"Unsupported pose classification loss type {self.pose_classification_loss_type}")
@@ -682,7 +621,7 @@ class YoloNASIntersectLoss(nn.Module):
 
         return regression_loss, classification_loss
 
-    def _get_kpt_projected_on_line(self, line_from: Tensor, border_from: str, line_to: Tensor, border_to: str, kpt: Tensor) -> Tensor:
+    def _get_kpt_projected_on_line(self, line_from: Tensor, border_from: str, line_to: Tensor, border_to: str, kpt: Tensor, anchor_points: Tensor, stride_tensor: Tensor) -> Tensor:
         """Compute the projection distance between the keypoint and the line
 
         Args:
@@ -695,12 +634,12 @@ class YoloNASIntersectLoss(nn.Module):
         Returns:
             Tensor: _description_
         """
-        p_line_from = border2image(line_from, self.image_size, self.image_size, border_from) / self.image_size
-        p_line_to = border2image(line_to, self.image_size, self.image_size, border_to) / self.image_size
+        p_line_from = border2image(line_from, 1, 1, border_from) / (stride_tensor.unsqueeze(0).unsqueeze(2) / stride_tensor.min()) + anchor_points.unsqueeze(0).unsqueeze(2)
+        p_line_to = border2image(line_to, 1, 1, border_to) / (stride_tensor.unsqueeze(0).unsqueeze(2) / stride_tensor.min()) + anchor_points.unsqueeze(0).unsqueeze(2)
         l = torch.sum((p_line_to - p_line_from) ** 2, dim=-1)
         t = torch.sum((kpt / self.image_size - p_line_from) * (p_line_to - p_line_from), dim=-1) / (l + 1.0e-9)
         p_line = p_line_from + t.unsqueeze(-1) * (p_line_to - p_line_from)
-        return p_line * 1024
+        return p_line * self.image_size
 
     def _intersect_loss(
         self,
@@ -713,6 +652,8 @@ class YoloNASIntersectLoss(nn.Module):
         target_pose_visibility: Tensor,
         area: Tensor,
         sigmas: Tensor,
+        stride_tensor,
+        anchor_points,
         assigned_scores: Optional[Tensor] = None,
         assigned_scores_sum: Optional[Tensor] = None,
     ) -> Tuple[Tensor, Tensor]:
@@ -771,8 +712,8 @@ class YoloNASIntersectLoss(nn.Module):
                 projected_points_image_coords_list = []
                 target_points_image_coords_list = []
                 for i, o in enumerate(LINE_BORDER_ORIENTATIONS):
-                    projected_points_image_coords_list.append(border2image(predicted_line_coords[..., i, u], self.image_size, self.image_size, o[u]))
-                    target_points_image_coords_list.append(border2image(target_line_coords[..., i, u], self.image_size, self.image_size, o[u]))
+                    projected_points_image_coords_list.append(border2image(predicted_line_coords[..., i, u], 1, 1, o[u]) * self.image_size / (stride_tensor.unsqueeze(0).unsqueeze(2) / stride_tensor.min()) + anchor_points.unsqueeze(0).unsqueeze(2))
+                    target_points_image_coords_list.append(border2image(target_line_coords[..., i, u], 1, 1, o[u]) * self.image_size / (stride_tensor.unsqueeze(0).unsqueeze(2) / stride_tensor.min()) + anchor_points.unsqueeze(0).unsqueeze(2))
                 projected_points_image_coords = torch.stack(projected_points_image_coords_list, dim=-2)
                 target_points_image_coords = torch.stack(target_points_image_coords_list, dim=-2)
                 d = ((projected_points_image_coords - target_points_image_coords) ** 2).sum(dim=-1, keepdim=True)
@@ -793,7 +734,7 @@ class YoloNASIntersectLoss(nn.Module):
                 o = orientations[i_line]
                 for kpt_indice in kpt_indices_list[i_line]:
                     kpt = predicted_pose_coords[..., kpt_indice, :]
-                    proj = self._get_kpt_projected_on_line(predicted_line_coords[..., i_line, 0], o[0], predicted_line_coords[..., i_line, 0], o[1], kpt)
+                    proj = self._get_kpt_projected_on_line(predicted_line_coords[..., i_line, 0], o[0], predicted_line_coords[..., i_line, 0], o[1], kpt, anchor_points, stride_tensor)
                     if "oks" in self.line_regression_loss_type:
                         d = ((kpt - proj) ** 2).sum(dim=-1, keepdim=True)
                         e = d / (2 * sigmas[:, i_line]) ** 2 / (area.squeeze(-1) + 1e-9) / 2
@@ -894,26 +835,87 @@ class YoloNASIntersectLoss(nn.Module):
                 assigned_scores_sum=assigned_scores_sum if self.rescale_pose_loss_with_assigned_score else None,
                 area=area,
                 sigmas=self.oks_sigmas.to(pred_pose_logits.device),
+                pose_classification_loss_type=self.pose_classification_loss_type
             )
+
+            # TODO: rebuild target & pred line coords and apply mask, then use kpt loss ?
+            masked_gt_poses = assign_result.assigned_poses[mask_positive]
+            masked_stride_tensor = torch.stack((stride_tensor,)*mask_positive.shape[0], dim=0)[mask_positive]
+            masked_anchor_points = torch.stack((anchor_points,)*mask_positive.shape[0], dim=0)[mask_positive]*masked_stride_tensor
+            masked_crop_size = self.image_size / (masked_stride_tensor / stride_tensor.min())
+            masked_bounds = torch.cat((masked_anchor_points - masked_crop_size/2, masked_anchor_points + masked_crop_size/2), dim=-1)
+            masked_diag = torch.norm(torch.stack((masked_crop_size, masked_crop_size), dim=0), dim=0)
+            gt_lines_image_coords_list = []
+            gt_lines_visibility_list = []
+            for kpts, bounds, diag in zip(masked_gt_poses.cpu().numpy(), masked_bounds.cpu().numpy(), masked_diag.cpu().numpy()):
+                enveloppe = box(*bounds)
+                lines = []
+                visibility = [0]*3
+                for i_line, (edge, o) in enumerate(zip((kpts[[0, 1]], kpts[[0, 3]], kpts[[3, 2]]), LINE_BORDER_ORIENTATIONS)):
+                    line = [[0, 0], [0, 0]]
+                    if edge[:, -1].prod() > 0:  # something visible
+                        diff = edge[1][:2] - edge[0][:2]
+                        diff = diff / (np.linalg.norm(diff) + 1.0e-9) * diag
+                        segment_extended = LineString((edge[0][:2] - diff, edge[1][:2] + diff))
+                        intersection = segment_extended.intersection(enveloppe)
+                        kpts_inter = list(zip(*intersection.xy))
+                        if len(kpts_inter) > 0:
+                            line[0] = kpts_inter[0]
+                            line[1] = kpts_inter[1]
+                            visibility[i_line] = 1
+                    lines.append(line)
+                gt_lines_image_coords_list.append(lines)
+                gt_lines_visibility_list.append(visibility)
+            gt_line_image_coords = torch.tensor(gt_lines_image_coords_list, dtype=gt_pose_coords.dtype, device=gt_pose_coords.device)
+            gt_line_visibility = torch.tensor(gt_lines_visibility_list, dtype=gt_pose_coords.dtype, device=gt_pose_coords.device).unsqueeze(-1)
+            gt_line_pose_coords = gt_line_image_coords.reshape((-1, 6, 2))
+            gt_line_pose_visibility = torch.tile(gt_line_visibility, (1, 1, 2)).reshape((-1, 6, 1))
 
             pred_line_coords = pred_line_coords[mask_positive]
             pred_line_logits = pred_line_logits[mask_positive].unsqueeze(-1)  # To make [Num Instances, Num Joints, 1]
-            gt_line_coords = assign_result.assigned_lines[..., 0:2][mask_positive]
-            gt_line_visibility = assign_result.assigned_lines[mask_positive][:, :, 2:3]
+            # TODO: compute image coords from line coords for predictions, then use the _keypoint_loss
+            pred_line_image_coords_list = []
+            for i_line, o in enumerate(LINE_BORDER_ORIENTATIONS):
+                pred_line_image_coords_list.append(
+                        torch.cat((
+                            border2image(pred_line_coords[:, [i_line], 0:1], 1, 1, o[0]) * masked_crop_size.unsqueeze(-1).unsqueeze(-1) + masked_anchor_points.unsqueeze(1).unsqueeze(1) - masked_crop_size.unsqueeze(-1).unsqueeze(-1)/2,
+                            border2image(pred_line_coords[:, [i_line], 1:2], 1, 1, o[1]) * masked_crop_size.unsqueeze(-1).unsqueeze(-1) + masked_anchor_points.unsqueeze(1).unsqueeze(1) - masked_crop_size.unsqueeze(-1).unsqueeze(-1)/2,
+                        ), dim=-2)
+                )
+            pred_line_image_coords = torch.cat(pred_line_image_coords_list, dim=1)
+            pred_line_pose_coords = pred_line_image_coords.reshape((-1, 6, 2))
+            pred_line_pose_logits = torch.tile(pred_line_logits, (1, 1, 2)).reshape((-1, 6, 1))
 
-            loss_line_reg, loss_line_cls = self._intersect_loss(
-                predicted_pose_coords=pred_pose_coords,
-                target_pose_coords=gt_pose_coords,
-                predicted_line_coords=pred_line_coords,
-                target_line_coords=gt_line_coords,
-                predicted_line_logits=pred_line_logits,
-                target_line_visibility=gt_line_visibility,
-                target_pose_visibility=gt_pose_visibility,
+            line_area = masked_crop_size**2 * 0.53
+            loss_line_reg, loss_line_cls = self._keypoint_loss(
+                predicted_coords=pred_line_pose_coords,
+                target_coords=gt_line_pose_coords,
+                predicted_logits=pred_line_pose_logits,
+                target_visibility=gt_line_pose_visibility,
                 assigned_scores=bbox_weight if self.rescale_pose_loss_with_assigned_score else None,
                 assigned_scores_sum=assigned_scores_sum if self.rescale_pose_loss_with_assigned_score else None,
-                area=area,
-                sigmas=self.line_oks_sigmas.to(pred_pose_logits.device),
+                area=line_area,
+                sigmas=torch.tensor((LINE_OKS_SIGMA,)*6, dtype=pred_line_pose_logits.dtype, device=pred_line_pose_logits.device),
+                pose_classification_loss_type=self.line_classification_loss_type
             )
+
+            # TODO: compute z coords for target then use mse loss?
+
+            # loss_line_reg, loss_line_cls = self._intersect_loss(
+            #     predicted_pose_coords=pred_pose_coords,
+            #     target_pose_coords=gt_pose_coords,
+            #     predicted_line_coords=pred_line_coords,
+            #     predicted_line_logits=pred_line_logits,
+            #     target_line_coords=gt_lines_image_coords,
+            #     target_line_visibility=gt_lines_visibility,
+            #     target_pose_visibility=gt_pose_visibility,
+            #     assigned_scores=bbox_weight if self.rescale_pose_loss_with_assigned_score else None,
+            #     assigned_scores_sum=assigned_scores_sum if self.rescale_pose_loss_with_assigned_score else None,
+            #     area=area,
+            #     sigmas=self.line_oks_sigmas.to(pred_pose_logits.device),
+            #     stride_tensor=stride_tensor,
+            #     anchor_points=anchor_points
+            # )
 
         else:
             loss_iou = torch.zeros([], device=pred_bboxes.device)
@@ -940,9 +942,6 @@ class YoloNASIntersectLoss(nn.Module):
 
         pred_dist = torch.nn.functional.conv2d(pred_dist.permute(0, 3, 1, 2), proj_conv).squeeze(1)
         return batch_distance2bbox(anchor_points, pred_dist), reg_max
-
-    def _line_decode(self, lines: Tensor) -> Tensor:
-        return lines.sigmoid() * (self.image_size * 2 + self.image_size * 2)
 
     def _bbox2distance(self, points, bbox, reg_max):
         x1y1, x2y2 = torch.split(bbox, 2, -1)
