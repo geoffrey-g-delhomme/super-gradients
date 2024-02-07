@@ -248,7 +248,8 @@ class ExtremeBatchIntersectEstimationVisualizationCallback(ExtremeBatchCaseVisua
                 lines = []
                 if isinstance(kpts, Tensor):
                     kpts = kpts.numpy()
-                for edge, o in zip((kpts[[0, 1]], kpts[[0, 3]], kpts[[3, 2]]), LINE_BORDER_ORIENTATIONS):
+                # for edge, o in zip((kpts[[0, 1]], kpts[[0, 3]], kpts[[3, 2]]), LINE_BORDER_ORIENTATIONS):
+                for edge, o in zip((kpts[[0, 1]], kpts[[6, 7]], kpts[[4, 5]]), LINE_BORDER_ORIENTATIONS):
                     line = [0] * 5
                     if edge[:, -1].prod() > 0:  # something visible
                         diff = edge[1][:2] - edge[0][:2]

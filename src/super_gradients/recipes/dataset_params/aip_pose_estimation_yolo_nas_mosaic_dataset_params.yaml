@@ -1,16 +1,16 @@
-num_joints: 4
+num_joints: 8
 
 # OKs sigma values take from https://github.com/cocodataset/cocoapi/blob/master/PythonAPI/pycocotools/cocoeval.py#L523
 # oks_sigmas: [0.5, 0.5, 0.5, 0.5]
-oks_sigmas: [0.1, 0.1, 0.1, 0.1]
+oks_sigmas: [0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1]
 
 # flip_indexes: [3, 2, 1, 0]
 
 edge_links:
   - [0, 1]
-  - [1, 2]
   - [2, 3]
-  - [3, 0]
+  - [4, 5]
+  - [6, 7]
 
 edge_colors:
  - [255, 0, 0]
@@ -20,8 +20,12 @@ edge_colors:
 
 keypoint_colors:
  - [255, 0, 0]
+ - [255, 0, 0]
+ - [0, 255, 0]
  - [0, 255, 0]
  - [0, 0, 255]
+ - [0, 0, 255]
+ - [128, 0, 0]
  - [128, 0, 0]
 
 mosaic_prob: 0.25

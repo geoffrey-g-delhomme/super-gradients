@@ -10,50 +10,18 @@
 #
 
 defaults:
-  - training_hyperparams: aip_yolo_nas_intersect_train_params
-  - dataset_params: aip_pose_estimation_yolo_nas_mosaic_dataset_params
-  - arch_params: yolo_nas_intersect_n_arch_params
-  - checkpoint_params: default_checkpoint_params
+  - aip_yolo_nas_intersect_n
   - _self_
   - variable_setup
-
-architecture: yolo_nas_intersect_n
-
-# WARNING: patience set to 2
-
-image_size: 1024
-# dataset_coco_root_dirpath: "/mnt/data1/user_cache/geoffrey.g.delhomme/data/2023_12/intersect/coco-1024x750"
+  
 dataset_coco_root_dirpath: "/mnt/data1/user_cache/geoffrey.g.delhomme/data/2023_12/nominal/coco-1024x750"
-# dataset_coco_root_dirpath: "/mnt/data1/user_cache/geoffrey.g.delhomme/data/2023_12/union/coco-1024x750"
 
 multi_gpu: DDP
 num_gpus: 4
 
 experiment_suffix: "release"
-experiment_name: aip_${architecture}_${image_size}_${experiment_suffix}
-
-arch_params:
-  num_classes: ${dataset_params.num_joints}
-
-dataset_params:
-  line_colors:
-    - [0, 128, 128]
-    - [0, 0, 128]
-    - [128, 0, 128]
-  mosaic_prob: 0.25
-  train_dataloader_params:
-    batch_size: 52
-    num_workers: 12
-  val_dataloader_params:
-    batch_size: 52
-    num_workers: 12
 
 training_hyperparams:
-  max_epochs: 100
-  initial_lr: 1.e-4 # 2e-3
-  cosine_final_lr_ratio: 0.01 # 0.05
-  resume: ${resume}
-  mixed_precision: True
   sg_logger: "wandb_sg_logger" # Weights&Biases Logger, see class super_gradients.common.sg_loggers.wandb_sg_logger.WandBSGLogger for details
   sg_logger_params: # Params that will be passed to __init__ of the logger super_gradients.common.sg_loggers.wandb_sg_logger.WandBSGLogger
     project_name: super-gradients-intersect # W&B project name
