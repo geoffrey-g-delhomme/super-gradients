@@ -31,7 +31,7 @@ criterion_params:
     pose_reg_loss_weight: 34.0
     pose_classification_loss_type: focal
     line_cls_loss_weight: 1.0 # NEW
-    line_reg_loss_weight: 34.0 # NEW
+    line_reg_loss_weight: 64.0 # NEW
     line_classification_loss_type: focal # NEW
     line_regression_loss_type: oks # NEW
     line_regression_loss_clip_weight: 0 # NEW
