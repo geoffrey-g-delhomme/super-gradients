@@ -838,66 +838,141 @@ class YoloNASIntersectLoss(nn.Module):
                 pose_classification_loss_type=self.pose_classification_loss_type
             )
 
-            # TODO: rebuild target & pred line coords and apply mask, then use kpt loss ?
-            masked_gt_poses = assign_result.assigned_poses[mask_positive]
-            masked_stride_tensor = torch.stack((stride_tensor,)*mask_positive.shape[0], dim=0)[mask_positive]
-            masked_anchor_points = torch.stack((anchor_points,)*mask_positive.shape[0], dim=0)[mask_positive]*masked_stride_tensor
-            masked_crop_size = self.image_size / (masked_stride_tensor / stride_tensor.min())
-            masked_bounds = torch.cat((masked_anchor_points - masked_crop_size/2, masked_anchor_points + masked_crop_size/2), dim=-1)
-            masked_diag = torch.norm(torch.stack((masked_crop_size, masked_crop_size), dim=0), dim=0)
-            gt_lines_image_coords_list = []
-            gt_lines_visibility_list = []
-            for kpts, bounds, diag in zip(masked_gt_poses.cpu().numpy(), masked_bounds.cpu().numpy(), masked_diag.cpu().numpy()):
-                enveloppe = box(*bounds)
-                lines = []
-                visibility = [0]*3
-                for i_line, (edge, o) in enumerate(zip((kpts[[0, 1]], kpts[[0, 3]], kpts[[3, 2]]), LINE_BORDER_ORIENTATIONS)):
-                    line = [[0, 0], [0, 0]]
-                    if edge[:, -1].prod() > 0:  # something visible
-                        diff = edge[1][:2] - edge[0][:2]
-                        diff = diff / (np.linalg.norm(diff) + 1.0e-9) * diag
-                        segment_extended = LineString((edge[0][:2] - diff, edge[1][:2] + diff))
-                        intersection = segment_extended.intersection(enveloppe)
-                        kpts_inter = list(zip(*intersection.xy))
-                        if len(kpts_inter) > 0:
-                            line[0] = kpts_inter[0]
-                            line[1] = kpts_inter[1]
-                            visibility[i_line] = 1
-                    lines.append(line)
-                gt_lines_image_coords_list.append(lines)
-                gt_lines_visibility_list.append(visibility)
-            gt_line_image_coords = torch.tensor(gt_lines_image_coords_list, dtype=gt_pose_coords.dtype, device=gt_pose_coords.device)
-            gt_line_visibility = torch.tensor(gt_lines_visibility_list, dtype=gt_pose_coords.dtype, device=gt_pose_coords.device).unsqueeze(-1)
-            gt_line_pose_coords = gt_line_image_coords.reshape((-1, 6, 2))
-            gt_line_pose_visibility = torch.tile(gt_line_visibility, (1, 1, 2)).reshape((-1, 6, 1))
+            if self.line_regression_loss_type == "proj_oks":
 
-            pred_line_coords = pred_line_coords[mask_positive]
-            pred_line_logits = pred_line_logits[mask_positive].unsqueeze(-1)  # To make [Num Instances, Num Joints, 1]
-            # TODO: compute image coords from line coords for predictions, then use the _keypoint_loss
-            pred_line_image_coords_list = []
-            for i_line, o in enumerate(LINE_BORDER_ORIENTATIONS):
-                pred_line_image_coords_list.append(
-                        torch.cat((
-                            border2image(pred_line_coords[:, [i_line], 0:1], 1, 1, o[0]) * masked_crop_size.unsqueeze(-1).unsqueeze(-1) + masked_anchor_points.unsqueeze(1).unsqueeze(1) - masked_crop_size.unsqueeze(-1).unsqueeze(-1)/2,
-                            border2image(pred_line_coords[:, [i_line], 1:2], 1, 1, o[1]) * masked_crop_size.unsqueeze(-1).unsqueeze(-1) + masked_anchor_points.unsqueeze(1).unsqueeze(1) - masked_crop_size.unsqueeze(-1).unsqueeze(-1)/2,
-                        ), dim=-2)
+                # TODO: rebuild target & pred line coords and apply mask, then use kpt loss ?
+                masked_gt_poses = assign_result.assigned_poses[mask_positive]
+                masked_stride_tensor = torch.stack((stride_tensor,)*mask_positive.shape[0], dim=0)[mask_positive]
+                masked_anchor_points = torch.stack((anchor_points,)*mask_positive.shape[0], dim=0)[mask_positive]*masked_stride_tensor
+                masked_crop_size = self.image_size / (masked_stride_tensor / stride_tensor.min())
+                masked_bounds = torch.cat((masked_anchor_points - masked_crop_size/2, masked_anchor_points + masked_crop_size/2), dim=-1)
+                masked_diag = torch.norm(torch.stack((masked_crop_size, masked_crop_size), dim=0), dim=0)
+                gt_lines_image_coords_list = []
+                gt_lines_visibility_list = []
+                for kpts, bounds, diag in zip(masked_gt_poses.cpu().numpy(), masked_bounds.cpu().numpy(), masked_diag.cpu().numpy()):
+                    enveloppe = box(*bounds)
+                    lines = []
+                    visibility = [0]*3
+                    for i_line, (edge, o) in enumerate(zip((kpts[[0, 1]], kpts[[0, 3]], kpts[[3, 2]]), LINE_BORDER_ORIENTATIONS)):
+                        line = [[0, 0], [0, 0]]
+                        if edge[:, -1].prod() > 0:  # something visible
+                            diff = edge[1][:2] - edge[0][:2]
+                            diff = diff / (np.linalg.norm(diff) + 1.0e-9) * diag
+                            segment_extended = LineString((edge[0][:2] - diff, edge[1][:2] + diff))
+                            intersection = segment_extended.intersection(enveloppe)
+                            kpts_inter = list(zip(*intersection.xy))
+                            if len(kpts_inter) > 0:
+                                line[0] = kpts_inter[0]
+                                line[1] = kpts_inter[1]
+                                visibility[i_line] = 1
+                        lines.append(line)
+                    gt_lines_image_coords_list.append(lines)
+                    gt_lines_visibility_list.append(visibility)
+                gt_line_image_coords = torch.tensor(gt_lines_image_coords_list, dtype=gt_pose_coords.dtype, device=gt_pose_coords.device)
+                gt_line_visibility = torch.tensor(gt_lines_visibility_list, dtype=gt_pose_coords.dtype, device=gt_pose_coords.device).unsqueeze(-1)
+                gt_line_pose_coords = gt_line_image_coords.reshape((-1, 6, 2))
+                gt_line_pose_visibility = torch.tile(gt_line_visibility, (1, 1, 2)).reshape((-1, 6, 1))
+
+                pred_line_coords = pred_line_coords[mask_positive]
+                pred_line_logits = pred_line_logits[mask_positive].unsqueeze(-1)  # To make [Num Instances, Num Joints, 1]
+                # TODO: compute image coords from line coords for predictions, then use the _keypoint_loss
+                pred_line_image_coords_list = []
+                for i_line, o in enumerate(LINE_BORDER_ORIENTATIONS):
+                    pred_line_image_coords_list.append(
+                            torch.cat((
+                                border2image(pred_line_coords[:, [i_line], 0:1], 1, 1, o[0]) * masked_crop_size.unsqueeze(-1).unsqueeze(-1) + masked_anchor_points.unsqueeze(1).unsqueeze(1) - masked_crop_size.unsqueeze(-1).unsqueeze(-1)/2,
+                                border2image(pred_line_coords[:, [i_line], 1:2], 1, 1, o[1]) * masked_crop_size.unsqueeze(-1).unsqueeze(-1) + masked_anchor_points.unsqueeze(1).unsqueeze(1) - masked_crop_size.unsqueeze(-1).unsqueeze(-1)/2,
+                            ), dim=-2)
+                    )
+                pred_line_image_coords = torch.cat(pred_line_image_coords_list, dim=1)
+                pred_line_pose_coords = pred_line_image_coords.reshape((-1, 6, 2))
+                pred_line_pose_logits = torch.tile(pred_line_logits, (1, 1, 2)).reshape((-1, 6, 1))
+
+                line_area = masked_crop_size**2 * 0.53
+                loss_line_reg, loss_line_cls = self._keypoint_loss(
+                    predicted_coords=pred_line_pose_coords,
+                    target_coords=gt_line_pose_coords,
+                    predicted_logits=pred_line_pose_logits,
+                    target_visibility=gt_line_pose_visibility,
+                    assigned_scores=bbox_weight if self.rescale_pose_loss_with_assigned_score else None,
+                    assigned_scores_sum=assigned_scores_sum if self.rescale_pose_loss_with_assigned_score else None,
+                    area=line_area,
+                    sigmas=torch.tensor((LINE_OKS_SIGMA,)*6, dtype=pred_line_pose_logits.dtype, device=pred_line_pose_logits.device),
+                    pose_classification_loss_type=self.line_classification_loss_type
                 )
-            pred_line_image_coords = torch.cat(pred_line_image_coords_list, dim=1)
-            pred_line_pose_coords = pred_line_image_coords.reshape((-1, 6, 2))
-            pred_line_pose_logits = torch.tile(pred_line_logits, (1, 1, 2)).reshape((-1, 6, 1))
 
-            line_area = masked_crop_size**2 * 0.53
-            loss_line_reg, loss_line_cls = self._keypoint_loss(
-                predicted_coords=pred_line_pose_coords,
-                target_coords=gt_line_pose_coords,
-                predicted_logits=pred_line_pose_logits,
-                target_visibility=gt_line_pose_visibility,
-                assigned_scores=bbox_weight if self.rescale_pose_loss_with_assigned_score else None,
-                assigned_scores_sum=assigned_scores_sum if self.rescale_pose_loss_with_assigned_score else None,
-                area=line_area,
-                sigmas=torch.tensor((LINE_OKS_SIGMA,)*6, dtype=pred_line_pose_logits.dtype, device=pred_line_pose_logits.device),
-                pose_classification_loss_type=self.line_classification_loss_type
-            )
+            elif self.line_regression_loss_type in ["mse", "bce", "oks"]:
+
+                # compute gt in z coordinates
+                masked_gt_poses = assign_result.assigned_poses[mask_positive]
+                masked_stride_tensor = torch.stack((stride_tensor,)*mask_positive.shape[0], dim=0)[mask_positive]
+                masked_anchor_points = torch.stack((anchor_points,)*mask_positive.shape[0], dim=0)[mask_positive]*masked_stride_tensor
+                masked_crop_size = self.image_size / (masked_stride_tensor / stride_tensor.min())
+                masked_bounds = torch.cat((masked_anchor_points - masked_crop_size/2, masked_anchor_points + masked_crop_size/2), dim=-1)
+                masked_diag = torch.norm(torch.stack((masked_crop_size, masked_crop_size), dim=0), dim=0)
+                gt_lines_coords_list = []
+                gt_lines_visibility_list = []
+                for kpts, bounds, diag, anchor_point, crop_size in zip(masked_gt_poses.cpu().numpy(), masked_bounds.cpu().numpy(), masked_diag.cpu().numpy(), masked_anchor_points.cpu().numpy(), masked_crop_size.cpu().numpy()):
+                    enveloppe = box(*bounds)
+                    lines = []
+                    visibility = [0]*3
+                    for i_line, (edge, o) in enumerate(zip((kpts[[0, 1]], kpts[[0, 3]], kpts[[3, 2]]), LINE_BORDER_ORIENTATIONS)):
+                        line = [0, 0]
+                        if edge[:, -1].prod() > 0:  # something visible
+                            diff = edge[1][:2] - edge[0][:2]
+                            diff = diff / (np.linalg.norm(diff) + 1.0e-9) * diag
+                            segment_extended = LineString((edge[0][:2] - diff, edge[1][:2] + diff))
+                            intersection = segment_extended.intersection(enveloppe)
+                            kpts_inter = list(zip(*intersection.xy))
+                            if len(kpts_inter) > 0:
+                                p_from = (kpts_inter[0] - anchor_point + crop_size/2)/crop_size
+                                line[0] = image2border(p_from[0], p_from[1], 1, 1, o[0]) / 4.
+                                p_to = (kpts_inter[1] - anchor_point + crop_size/2)/crop_size
+                                line[1] = image2border(p_to[0], p_to[1], 1, 1, o[1]) / 4.
+                                visibility[i_line] = 1
+                        lines.append(line)
+                    gt_lines_coords_list.append(lines)
+                    gt_lines_visibility_list.append(visibility)
+                gt_line_coords = torch.tensor(gt_lines_coords_list, dtype=gt_pose_coords.dtype, device=gt_pose_coords.device)
+                gt_line_visibility = torch.tensor(gt_lines_visibility_list, dtype=gt_pose_coords.dtype, device=gt_pose_coords.device).unsqueeze(-1)
+
+                pred_line_coords = pred_line_coords[mask_positive]
+                pred_line_logits = pred_line_logits[mask_positive].unsqueeze(-1)  # To make [Num Instances, Num Joints, 1]
+
+                line_visible_targets_mask: Tensor = (gt_line_visibility > 0).float()
+
+                if self.line_regression_loss_type == "mse":
+                    regression_loss_unreduced = torch.nn.functional.mse_loss(pred_line_coords, gt_line_coords, reduction="none").sum(dim=-1, keepdim=True)
+                elif self.line_regression_loss_type == "bce":
+                    regression_loss_unreduced = torch.nn.functional.binary_cross_entropy_with_logits(pred_line_coords, gt_line_coords, reduction="none").sum(dim=-1, keepdim=True)
+                elif self.line_regression_loss_type == "oks":
+                    d = ((pred_line_coords - gt_line_coords) ** 2).sum(dim=-1, keepdim=True)
+                    e = d / (2*0.1)**2 / 2
+                    regression_loss_unreduced = 1 - torch.exp(-e)
+
+                regression_loss_reduced = (regression_loss_unreduced * line_visible_targets_mask).sum(dim=1, keepdim=False) / (
+                    line_visible_targets_mask.sum(dim=1, keepdim=False) + 1e-9
+                )
+
+                if self.line_classification_loss_type == "bce":
+                    classification_loss = torch.nn.functional.binary_cross_entropy_with_logits(pred_line_logits, line_visible_targets_mask, reduction="none").mean(
+                        dim=1
+                    )
+                elif self.pose_classification_loss_type == "focal":
+                    classification_loss = self._focal_loss(pred_line_logits, line_visible_targets_mask, alpha=0.25, gamma=2.0, reduction="none").mean(dim=1)
+
+                assigned_scores=bbox_weight if self.rescale_pose_loss_with_assigned_score else None
+                assigned_scores_sum=assigned_scores_sum if self.rescale_pose_loss_with_assigned_score else None
+
+                if assigned_scores is None:
+                    classification_loss = classification_loss.mean()
+                    regression_loss = regression_loss_reduced.mean()
+                else:
+                    classification_loss = (classification_loss * assigned_scores).sum() / assigned_scores_sum
+                    regression_loss = (regression_loss_reduced * assigned_scores).sum() / assigned_scores_sum
+
+                loss_line_cls = classification_loss
+                loss_line_reg = regression_loss
 
             # TODO: compute z coords for target then use mse loss?
 
