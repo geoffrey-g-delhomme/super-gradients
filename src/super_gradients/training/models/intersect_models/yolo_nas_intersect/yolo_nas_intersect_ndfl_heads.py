@@ -216,9 +216,9 @@ class YoloNASIntersectNDFLHeads(BaseDetectionModule, SupportsReplaceNumClasses):
             pred_line_coords_list.append(
                 torch.stack((
                     # border2image(pred_line_coords[:, :, [i_line], [0]], image_width, image_height, o[0]) / (stride_tensor.unsqueeze(0).unsqueeze(2) / stride_tensor.min()) + anchor_points.unsqueeze(0).unsqueeze(2),
-                    border2image(pred_line_coords[:, :, [i_line], [0]], 1, 1, o[0]) * crop_size + anchor_points.unsqueeze(0).unsqueeze(2) - crop_size/2,
+                    border2image(pred_line_coords[:, :, [i_line], [0]]*4, 1, 1, o[0]) * crop_size + anchor_points.unsqueeze(0).unsqueeze(2) - crop_size/2,
                     # border2image(pred_line_coords[:, :, [i_line], [1]], image_width, image_height, o[1]) / (stride_tensor.unsqueeze(0).unsqueeze(2) / stride_tensor.min()) + anchor_points.unsqueeze(0).unsqueeze(2),
-                    border2image(pred_line_coords[:, :, [i_line], [1]], 1, 1, o[1]) * crop_size + anchor_points.unsqueeze(0).unsqueeze(2) - crop_size/2,
+                    border2image(pred_line_coords[:, :, [i_line], [1]]*4, 1, 1, o[1]) * crop_size + anchor_points.unsqueeze(0).unsqueeze(2) - crop_size/2,
                 ), dim=-2)
             )
         pred_line_coords = torch.cat(pred_line_coords_list, dim=-3)  # [B, Anchors, L, 2, 2]

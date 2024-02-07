@@ -712,8 +712,8 @@ class YoloNASIntersectLoss(nn.Module):
                 projected_points_image_coords_list = []
                 target_points_image_coords_list = []
                 for i, o in enumerate(LINE_BORDER_ORIENTATIONS):
-                    projected_points_image_coords_list.append(border2image(predicted_line_coords[..., i, u], 1, 1, o[u]) * self.image_size / (stride_tensor.unsqueeze(0).unsqueeze(2) / stride_tensor.min()) + anchor_points.unsqueeze(0).unsqueeze(2))
-                    target_points_image_coords_list.append(border2image(target_line_coords[..., i, u], 1, 1, o[u]) * self.image_size / (stride_tensor.unsqueeze(0).unsqueeze(2) / stride_tensor.min()) + anchor_points.unsqueeze(0).unsqueeze(2))
+                    projected_points_image_coords_list.append(border2image(predicted_line_coords[..., i, u]*4, 1, 1, o[u]) * self.image_size / (stride_tensor.unsqueeze(0).unsqueeze(2) / stride_tensor.min()) + anchor_points.unsqueeze(0).unsqueeze(2))
+                    target_points_image_coords_list.append(border2image(target_line_coords[..., i, u]*4, 1, 1, o[u]) * self.image_size / (stride_tensor.unsqueeze(0).unsqueeze(2) / stride_tensor.min()) + anchor_points.unsqueeze(0).unsqueeze(2))
                 projected_points_image_coords = torch.stack(projected_points_image_coords_list, dim=-2)
                 target_points_image_coords = torch.stack(target_points_image_coords_list, dim=-2)
                 d = ((projected_points_image_coords - target_points_image_coords) ** 2).sum(dim=-1, keepdim=True)
@@ -880,8 +880,8 @@ class YoloNASIntersectLoss(nn.Module):
                 for i_line, o in enumerate(LINE_BORDER_ORIENTATIONS):
                     pred_line_image_coords_list.append(
                             torch.cat((
-                                border2image(pred_line_coords[:, [i_line], 0:1], 1, 1, o[0]) * masked_crop_size.unsqueeze(-1).unsqueeze(-1) + masked_anchor_points.unsqueeze(1).unsqueeze(1) - masked_crop_size.unsqueeze(-1).unsqueeze(-1)/2,
-                                border2image(pred_line_coords[:, [i_line], 1:2], 1, 1, o[1]) * masked_crop_size.unsqueeze(-1).unsqueeze(-1) + masked_anchor_points.unsqueeze(1).unsqueeze(1) - masked_crop_size.unsqueeze(-1).unsqueeze(-1)/2,
+                                border2image(pred_line_coords[:, [i_line], 0:1]*4, 1, 1, o[0]) * masked_crop_size.unsqueeze(-1).unsqueeze(-1) + masked_anchor_points.unsqueeze(1).unsqueeze(1) - masked_crop_size.unsqueeze(-1).unsqueeze(-1)/2,
+                                border2image(pred_line_coords[:, [i_line], 1:2]*4, 1, 1, o[1]) * masked_crop_size.unsqueeze(-1).unsqueeze(-1) + masked_anchor_points.unsqueeze(1).unsqueeze(1) - masked_crop_size.unsqueeze(-1).unsqueeze(-1)/2,
                             ), dim=-2)
                     )
                 pred_line_image_coords = torch.cat(pred_line_image_coords_list, dim=1)
