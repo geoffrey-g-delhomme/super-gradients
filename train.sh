@@ -17,7 +17,8 @@
 # sh train.sh training_hyperparams.max_train_batches=2000 experiment_suffix=proj_oks training_hyperparams.max_epochs=20 training_hyperparams.criterion_params.line_regression_loss_type=proj_oks
 
 # ng-201-1 (V100x8) (run)
-# sh train.sh training_hyperparams.max_train_batches=2000 num_gpus=8 dataset_params.train_dataloader_params.num_workers=8 dataset_params.val_dataloader_params.num_workers=8 dataset_params.train_dataloader_params.batch_size=48 dataset_params.val_dataloader_params.batch_size=48 experiment_suffix=proj_oks_clip training_hyperparams.max_epochs=20 training_hyperparams.criterion_params.line_regression_loss_type=proj_oks training_hyperparams.criterion_params.line_regression_loss_clip_weight=0.1
+# sh train.sh training_hyperparams.max_train_batches=2000 num_gpus=8 dataset_params.train_dataloader_params.num_workers=8 dataset_params.val_dataloader_params.num_workers=8 dataset_params.train_dataloader_params.batch_size=48 dataset_params.val_dataloader_params.batch_size=48 experiment_suffix=proj_oks_clip training_hyperparams.max_epochs=20 training_hyperparams.criterion_params.line_regression_loss_type=proj_oks training_hyperparams.criterion_params.line_regression_loss_clip_weight=0.001
+# sh train.sh training_hyperparams.max_train_batches=2000 num_gpus=8 dataset_params.train_dataloader_params.num_workers=8 dataset_params.val_dataloader_params.num_workers=8 dataset_params.train_dataloader_params.batch_size=48 dataset_params.val_dataloader_params.batch_size=48 experiment_suffix=bce training_hyperparams.max_epochs=20 training_hyperparams.criterion_params.line_regression_loss_type=bce
 
 # ng-202-32 (V100x4) (run)
 # sh train.sh training_hyperparams.max_train_batches=2000 experiment_suffix=mse training_hyperparams.max_epochs=20 training_hyperparams.criterion_params.line_regression_loss_type=mse dataset_params.train_dataloader_params.batch_size=48 dataset_params.val_dataloader_params.batch_size=48

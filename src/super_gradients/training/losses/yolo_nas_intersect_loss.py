@@ -806,7 +806,7 @@ class YoloNASIntersectLoss(nn.Module):
                     )
                     regression_loss_reduced_list.append(regression_loss_reduced)
             regression_loss_reduced_clip = torch.stack(regression_loss_reduced_list, dim=0).sum(dim=0)
-            regression_loss_reduced = regression_loss_reduced + regression_loss_reduced_clip * self.line_regression_loss_clip
+            regression_loss_reduced = regression_loss_reduced + regression_loss_reduced_clip * self.line_regression_loss_clip_weight
 
         if self.line_classification_loss_type == "bce":
             classification_loss = torch.nn.functional.binary_cross_entropy_with_logits(predicted_line_logits, line_visible_targets_mask, reduction="none").mean(
