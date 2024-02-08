@@ -57,7 +57,7 @@ class ImageIntersectEstimationPrediction(ImagePrediction):
             boxes=self.prediction.bboxes_xyxy,
             edge_links=self.prediction.edge_links,
             edge_colors=edge_colors or self.prediction.edge_colors,
-            line_colors=edge_colors or self.prediction.line_colors,
+            line_colors=line_colors or self.prediction.line_colors,
             joint_thickness=joint_thickness,
             keypoint_colors=keypoint_colors or self.prediction.keypoint_colors,
             keypoint_radius=keypoint_radius,

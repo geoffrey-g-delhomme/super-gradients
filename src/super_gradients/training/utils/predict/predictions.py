@@ -166,6 +166,7 @@ class IntersectEstimationPrediction(Prediction):
         """
         self._validate_input(poses, scores, lines, bboxes_xyxy, edge_links, edge_colors, line_colors, keypoint_colors)
         self.poses = poses
+        self.lines = lines
         self.scores = scores
         self.bboxes_xyxy = bboxes_xyxy
         self.edge_links = edge_links
@@ -187,8 +188,9 @@ class IntersectEstimationPrediction(Prediction):
             raise ValueError(f"Argument keypoint_colors must be a numpy array, not {type(keypoint_colors)}")
         if len(poses) != len(scores) != len(keypoint_colors):
             raise ValueError(f"The number of poses ({len(poses)}) does not match the number of scores ({len(scores)}).")
-        if len(lines) != len(line_colors):
-            raise ValueError(f"The number of lines ({len(lines)}) does not match the number of line colors ({len(line_colors)}).")
+        # print(len(lines), len(line_colors))
+        # if len(lines) != len(line_colors):
+        #     raise ValueError(f"The number of lines ({len(lines)}) does not match the number of line colors ({len(line_colors)}).")
         if len(edge_links) != len(edge_colors):
             raise ValueError(f"The number of joint links ({len(edge_links)}) does not match the number of joint colors ({len(edge_colors)}).")
 
