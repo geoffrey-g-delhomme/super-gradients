@@ -634,8 +634,10 @@ class YoloNASIntersectLoss(nn.Module):
         Returns:
             Tensor: _description_
         """
-        p_line_from = border2image(line_from, 1, 1, border_from) / (stride_tensor.unsqueeze(0).unsqueeze(2) / stride_tensor.min()) + anchor_points.unsqueeze(0).unsqueeze(2)
-        p_line_to = border2image(line_to, 1, 1, border_to) / (stride_tensor.unsqueeze(0).unsqueeze(2) / stride_tensor.min()) + anchor_points.unsqueeze(0).unsqueeze(2)
+        p_line_from = border2image(line_from, 1, 1, border_from) / (stride_tensor.max() / stride_tensor.unsqueeze(0).unsqueeze(2)) + anchor_points.unsqueeze(0).unsqueeze(2)
+        # p_line_from = border2image(line_from, 1, 1, border_from) / (stride_tensor.unsqueeze(0).unsqueeze(2) / stride_tensor.min()) + anchor_points.unsqueeze(0).unsqueeze(2)
+        p_line_to = border2image(line_to, 1, 1, border_to) / (stride_tensor.max() / stride_tensor.unsqueeze(0).unsqueeze(2)) + anchor_points.unsqueeze(0).unsqueeze(2)
+        # p_line_to = border2image(line_to, 1, 1, border_to) / (stride_tensor.unsqueeze(0).unsqueeze(2) / stride_tensor.min()) + anchor_points.unsqueeze(0).unsqueeze(2)
         l = torch.sum((p_line_to - p_line_from) ** 2, dim=-1)
         t = torch.sum((kpt / self.image_size - p_line_from) * (p_line_to - p_line_from), dim=-1) / (l + 1.0e-9)
         p_line = p_line_from + t.unsqueeze(-1) * (p_line_to - p_line_from)
@@ -712,8 +714,10 @@ class YoloNASIntersectLoss(nn.Module):
                 projected_points_image_coords_list = []
                 target_points_image_coords_list = []
                 for i, o in enumerate(LINE_BORDER_ORIENTATIONS):
-                    projected_points_image_coords_list.append(border2image(predicted_line_coords[..., i, u]*4, 1, 1, o[u]) * self.image_size / (stride_tensor.unsqueeze(0).unsqueeze(2) / stride_tensor.min()) + anchor_points.unsqueeze(0).unsqueeze(2))
-                    target_points_image_coords_list.append(border2image(target_line_coords[..., i, u]*4, 1, 1, o[u]) * self.image_size / (stride_tensor.unsqueeze(0).unsqueeze(2) / stride_tensor.min()) + anchor_points.unsqueeze(0).unsqueeze(2))
+                    projected_points_image_coords_list.append(border2image(predicted_line_coords[..., i, u]*4, 1, 1, o[u]) * self.image_size / (stride_tensor.max() / stride_tensor.unsqueeze(0).unsqueeze(2)) + anchor_points.unsqueeze(0).unsqueeze(2))
+                    # projected_points_image_coords_list.append(border2image(predicted_line_coords[..., i, u]*4, 1, 1, o[u]) * self.image_size / (stride_tensor.unsqueeze(0).unsqueeze(2) / stride_tensor.min()) + anchor_points.unsqueeze(0).unsqueeze(2))
+                    target_points_image_coords_list.append(border2image(target_line_coords[..., i, u]*4, 1, 1, o[u]) * self.image_size / (stride_tensor.max() / stride_tensor.unsqueeze(0).unsqueeze(2)) + anchor_points.unsqueeze(0).unsqueeze(2))
+                    # target_points_image_coords_list.append(border2image(target_line_coords[..., i, u]*4, 1, 1, o[u]) * self.image_size / (stride_tensor.unsqueeze(0).unsqueeze(2) / stride_tensor.min()) + anchor_points.unsqueeze(0).unsqueeze(2))
                 projected_points_image_coords = torch.stack(projected_points_image_coords_list, dim=-2)
                 target_points_image_coords = torch.stack(target_points_image_coords_list, dim=-2)
                 d = ((projected_points_image_coords - target_points_image_coords) ** 2).sum(dim=-1, keepdim=True)
@@ -844,7 +848,8 @@ class YoloNASIntersectLoss(nn.Module):
                 masked_gt_poses = assign_result.assigned_poses[mask_positive]
                 masked_stride_tensor = torch.stack((stride_tensor,)*mask_positive.shape[0], dim=0)[mask_positive]
                 masked_anchor_points = torch.stack((anchor_points,)*mask_positive.shape[0], dim=0)[mask_positive]*masked_stride_tensor
-                masked_crop_size = self.image_size / (masked_stride_tensor / stride_tensor.min())
+                # masked_crop_size = self.image_size / (masked_stride_tensor / stride_tensor.min())
+                masked_crop_size = self.image_size / (stride_tensor.max() / masked_stride_tensor)
                 masked_bounds = torch.cat((masked_anchor_points - masked_crop_size/2, masked_anchor_points + masked_crop_size/2), dim=-1)
                 masked_diag = torch.norm(torch.stack((masked_crop_size, masked_crop_size), dim=0), dim=0)
                 gt_lines_image_coords_list = []
@@ -908,7 +913,8 @@ class YoloNASIntersectLoss(nn.Module):
                 masked_gt_poses = assign_result.assigned_poses[mask_positive]
                 masked_stride_tensor = torch.stack((stride_tensor,)*mask_positive.shape[0], dim=0)[mask_positive]
                 masked_anchor_points = torch.stack((anchor_points,)*mask_positive.shape[0], dim=0)[mask_positive]*masked_stride_tensor
-                masked_crop_size = self.image_size / (masked_stride_tensor / stride_tensor.min())
+                # masked_crop_size = self.image_size / (masked_stride_tensor / stride_tensor.min())
+                masked_crop_size = self.image_size / (stride_tensor.max() / masked_stride_tensor)
                 masked_bounds = torch.cat((masked_anchor_points - masked_crop_size/2, masked_anchor_points + masked_crop_size/2), dim=-1)
                 masked_diag = torch.norm(torch.stack((masked_crop_size, masked_crop_size), dim=0), dim=0)
                 gt_lines_coords_list = []
