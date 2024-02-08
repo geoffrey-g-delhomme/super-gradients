@@ -522,13 +522,13 @@ class IntersectEstimationPipeline(Pipeline):
             images_predictions = next(iter(images_predictions))
         else:
             images_predictions = [image_predictions for image_predictions in tqdm(images_predictions, total=n_images, desc="Predicting Images")]
-            images_predictions = ImagesPoseEstimationPrediction(_images_prediction_lst=images_predictions)
+            images_predictions = ImagesIntersectEstimationPrediction(_images_prediction_lst=images_predictions)
 
         return images_predictions
 
     def _combine_image_prediction_to_video(
         self, images_predictions: Iterable[ImageDetectionPrediction], fps: float, n_images: Optional[int] = None
-    ) -> IntersectEstimationPredictions:
+    ) -> VideoIntersectEstimationPrediction:
         return VideoIntersectEstimationPrediction(_images_prediction_gen=images_predictions, fps=fps, n_frames=n_images)
 
 

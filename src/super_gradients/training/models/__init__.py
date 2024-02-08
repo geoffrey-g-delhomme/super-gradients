@@ -117,6 +117,8 @@ from super_gradients.training.models.segmentation_models.ddrnet_backbones import
 # Pose estimation
 from super_gradients.training.models.pose_estimation_models.dekr_hrnet import DEKRPoseEstimationModel, DEKRW32NODC
 
+from super_gradients.training.models.intersect_models.yolo_nas_intersect import YoloNASIntersect_N
+
 # KD
 from super_gradients.training.models.kd_modules.kd_module import KDModule
 
