@@ -210,7 +210,8 @@ class YoloNASIntersectNDFLHeads(BaseDetectionModule, SupportsReplaceNumClasses):
 
         # change from border coordinates to xy image coordinates
         image_size = int(w * stride_tensor[-1].cpu())
-        crop_size = image_size / (stride_tensor.unsqueeze(0).unsqueeze(2) / stride_tensor.min())
+        crop_size = image_size / (stride_tensor.max() / stride_tensor.unsqueeze(0).unsqueeze(2))
+        # crop_size = image_size / (stride_tensor.unsqueeze(0).unsqueeze(2) / stride_tensor.min())
         pred_line_coords_list = []
         for i_line, o in enumerate(LINE_BORDER_ORIENTATIONS):
             pred_line_coords_list.append(
