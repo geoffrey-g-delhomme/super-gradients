@@ -59,7 +59,7 @@ valid_metrics_list:
       post_prediction_callback:
         _target_: super_gradients.training.models.intersect_models.yolo_nas_intersect.YoloNASIntersectPostPredictionCallback
         pose_confidence_threshold: 0.01
-        nms_iou_threshold: 0.7
+        nms_iou_threshold: 0.2
         pre_nms_max_predictions: 300
         post_nms_max_predictions: 30
 
@@ -73,13 +73,13 @@ phase_callbacks:
       loss_to_monitor: YoloNASIntersectLoss/loss
       max: True
       freq: 1
-      max_images: 16
+      max_images: 32
       enable_on_train_loader: True
       enable_on_valid_loader: True
       post_prediction_callback:
         _target_: super_gradients.training.models.intersect_models.yolo_nas_intersect.YoloNASIntersectPostPredictionCallback
-        pose_confidence_threshold: 0.3
-        nms_iou_threshold: 0.7
+        pose_confidence_threshold: 0.2
+        nms_iou_threshold: 0.3
         pre_nms_max_predictions: 300
         post_nms_max_predictions: 30
   - EarlyStop:
